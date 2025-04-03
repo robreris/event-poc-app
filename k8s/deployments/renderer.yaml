@@ -1,0 +1,28 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: renderer
+  namespace: event-poc
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: renderer
+  template:
+    metadata:
+      labels:
+        app: renderer
+    spec:
+      containers:
+      - name: renderer
+        image: 228122752878.dkr.ecr.us-east-1.amazonaws.com/event-driven-poc-app:latest
+        env:
+        - name: ROLE
+          value: "renderer"
+        volumeMounts:
+        - name: shared-artifacts
+          mountPath: /artifacts
+      volumes:
+      - name: shared-artifacts
+        persistentVolumeClaim:
+          claimName: shared-artifacts

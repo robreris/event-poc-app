@@ -1,0 +1,34 @@
+apiVersion: eksctl.io/v1alpha5
+kind: ClusterConfig
+
+metadata:
+  name: event-driven-poc
+  region: us-east-1
+  version: "1.29"  # Or the latest stable version in your region
+
+vpc:
+  cidr: 10.0.0.0/16
+
+availabilityZones:
+- us-east-1a
+- us-east-1b
+
+managedNodeGroups:
+  - name: ng-main
+    instanceType: t3.medium
+    desiredCapacity: 2
+    minSize: 2
+    maxSize: 4
+    volumeSize: 20
+    privateNetworking: true
+    labels:
+      role: app
+    iam:
+      withAddonPolicies:
+        efs: true
+        cloudWatch: true
+        autoScaler: true
+
+cloudWatch:
+  clusterLogging:
+    enableTypes: ["api", "audit", "authenticator", "controllerManager", "scheduler"]

@@ -1,0 +1,28 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tts
+  namespace: event-poc
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: tts
+  template:
+    metadata:
+      labels:
+        app: tts
+    spec:
+      containers:
+      - name: tts
+        image: 228122752878.dkr.ecr.us-east-1.amazonaws.com/event-driven-poc-app:latest
+        env:
+        - name: ROLE
+          value: "tts"
+        volumeMounts:
+        - name: shared-artifacts
+          mountPath: /artifacts
+      volumes:
+      - name: shared-artifacts
+        persistentVolumeClaim:
+          claimName: shared-artifacts

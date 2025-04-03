@@ -1,0 +1,23 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: producer
+  namespace: event-poc
+spec:
+  template:
+    spec:
+      containers:
+      - name: producer
+        image: 228122752878.dkr.ecr.us-east-1.amazonaws.com/event-driven-poc-app:latest
+        env:
+        - name: ROLE
+          value: "producer"
+        volumeMounts:
+        - name: shared-artifacts
+          mountPath: /artifacts
+      volumes:
+      - name: shared-artifacts
+        persistentVolumeClaim:
+          claimName: shared-artifacts
+      restartPolicy: Never
+  backoffLimit: 1
