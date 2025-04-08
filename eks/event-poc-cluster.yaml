@@ -4,7 +4,7 @@ kind: ClusterConfig
 metadata:
   name: event-driven-poc
   region: us-east-1
-  version: "1.29"  # Or the latest stable version in your region
+  version: "1.32"  # Or the latest stable version in your region
 
 vpc:
   cidr: 10.0.0.0/16
@@ -15,7 +15,7 @@ availabilityZones:
 
 managedNodeGroups:
   - name: ng-main
-    instanceType: t3.medium
+    instanceType: t3.large
     desiredCapacity: 2
     minSize: 2
     maxSize: 4

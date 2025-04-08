@@ -53,4 +53,5 @@ aws cloudformation create-stack \
   --stack-name event-driven-poc-efs \
   --template-body file://./efs.yaml \
   --parameters file://./$PARAM_FILE \
-  --capabilities CAPABILITY_NAMED_IAM
+  --capabilities CAPABILITY_NAMED_IAM \
+  --region us-east-1
