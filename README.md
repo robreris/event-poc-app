@@ -2,28 +2,62 @@
 
 Create cluster
 ```bash
+export AWS_DEFAULT_REGION=us-east-1
 eksctl create cluster -f eks/event-poc-cluster.yaml
+cluster_name=$(eksctl get cluster --output json | jq -r .[].Name)
+```
+
+Set up the EFS CSI Driver Add-on
+```bash
+role_name=AmazonEKS_EFS_CSI_DriverRole
+
+eksctl utils associate-iam-oidc-provider \
+  --cluster $cluster_name \
+  --approve
+
+eksctl create iamserviceaccount  \
+  --name efs-csi-controller-sa   \
+  --namespace kube-system   \
+  --cluster $cluster_name  \
+  --role-name $role_name  \
+  --role-only   \
+  --attach-policy-arn arn:aws:iam::aws:policy/service-role/AmazonEFSCSIDriverPolicy  \
+  --approve
+
+TRUST_POLICY=$(aws iam get-role --output json --role-name $role_name --query 'Role.AssumeRolePolicyDocument' | \
+    sed -e 's/efs-csi-controller-sa/efs-csi-*/' -e 's/StringEquals/StringLike/')
+
+aws iam update-assume-role-policy --role-name $role_name --policy-document "$TRUST_POLICY"
+
+AWS_ACCT=<your AWS Account number>
+eksctl create addon --cluster event-driven-poc --name aws-efs-csi-driver --version latest --service-account-role-arn arn:aws:iam::$AWS_ACCT:role/AmazonEKS_EFS_CSI_DriverRole --force
 ```
 
 Set up EFS
 ```bash
-./eks/get-cft-params.sh
+./infra/get-cft-params.sh
 ```
-
-Set up EFS CSI driver
-```bash
-kubectl apply -k "github.com/kubernetes-sigs/aws-efs-csi-driver/deploy/kubernetes/overlays/stable/ecr/?ref=release-1.5"
-```
-
-**Ensure NFS mount security groups allow NFS (port 2049) access from the security group attached to cluster EC2 instances**
+**Ensure EFS mount security groups have been configured to allow NFS (port 2049) access from the security group attached to cluster EC2 instances**
 
 Update the EFS storage class object spec with new file system id and deploy
 ```bash
+EFS_ID=$(aws efs describe-file-systems \
+  --query "FileSystems[?Tags[?Key=='Name' && Value=='eks-event-poc-efs']].FileSystemId" \
+  --output text)
+
+sed -i "s/fileSystemId: .*/fileSystemId: $EFS_ID/" infra/efs-sc.yaml
+
 kubectl create -f infra/efs-sc.yaml
 ```
 
-Deploy PVC
+Update PVC object spec to reference new filesystem id and deploy
 ```bash
+EFS_ID=$(aws efs describe-file-systems \
+  --query "FileSystems[?Tags[?Key=='Name' && Value=='eks-event-poc-efs']].FileSystemId" \
+  --output text)
+sed -i "s/volumeHandle: .*/volumeHandle: $EFS_ID/" k8s/pvc.yaml
+
+kubectl create namespace event-poc
 kubectl create -f k8s/pvc.yaml
 ```
 
@@ -35,9 +69,15 @@ helm repo update
 helm install rabbitmq-operator bitnami/rabbitmq-cluster-operator --namespace rabbitmq-system
 ```
 
-Deploy RabbitMQ cluster
+Deploy RabbitMQ cluster and get creds for console access
 ```bash
 kubectl apply -f rabbitmq/rabbitmq-cluster.yaml
+
+# Get console DNS
+rabbitmqdns="http://$(kubectl get svc my-rabbit -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'):15672"
+echo $rabbitmqdns    # paste into browser
+
+# Get credentials for log in
 kubectl get secret my-rabbit-default-user -o jsonpath="{.data.username}" | base64 --decode; echo
 kubectl get secret my-rabbit-default-user -o jsonpath="{.data.password}" | base64 --decode; echo
 ```

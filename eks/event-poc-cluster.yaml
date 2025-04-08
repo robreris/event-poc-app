@@ -16,9 +16,9 @@ availabilityZones:
 managedNodeGroups:
   - name: ng-main
     instanceType: t3.large
-    desiredCapacity: 2
+    desiredCapacity: 3
     minSize: 2
-    maxSize: 4
+    maxSize: 5
     volumeSize: 20
     privateNetworking: true
     labels:
