@@ -16,29 +16,23 @@ def ensure_path(job_id, role):
         f.write(f"{role} completed at {time.time()}")
 
 host = os.environ.get("RABBIT_HOST", "rabbitmq")
-credentials = pika.PlainCredentials("user", "bitnami")
+username = os.environ.get("RABBIT_USERNAME", "")
+password = os.environ.get("RABBIT_PASSWORD", "")
+credentials = pika.PlainCredentials(username, password)
 params = pika.ConnectionParameters(host=host, credentials=credentials)
-for attempt in range(10):
-    try:
-        conn = pika.BlockingConnection(params)
-        channel = conn.channel()
-        break
-    except pika.exceptions.AMQPConnectionError:
-        print(f"{attempt+1}/10] Waiting for RabbitMQ to be ready...")
-        time.sleep(3)
-else:
-    raise Exception("Failed to connect to RabbitMQ after 10 tries")
+conn = pika.BlockingConnection(params)
+channel = conn.channel()
 
-channel.queue_declare(queue='ppt-uploaded')
-channel.queue_declare(queue='tts-complete')
-channel.queue_declare(queue='rendering-complete')
-channel.queue_declare(queue='start-assembly')
+channel.queue_declare(queue='ppt-uploaded', durable=True)
+channel.queue_declare(queue='tts-complete', durable=True)
+channel.queue_declare(queue='rendering-complete', durable=True)
+channel.queue_declare(queue='start-assembly', durable=True)
 
 if ROLE == "producer":
     print("Producer waiting for consumers to be ready...")
     time.sleep(10)
     msg = { "event": "ppt-uploaded", "job_id": JOB_ID }
-    channel.basic_publish(exchange='', routing_key='ppt-uploaded', body=json.dumps(msg))
+    channel.basic_publish(exchange='', routing_key='ppt-uploaded', body=json.dumps(msg), properties=pika.BasicProperties(delivery_mode=2))
     print("Producer: Sent ppt-uploaded")
     time.sleep(5)
 
@@ -48,10 +42,10 @@ elif ROLE == "tts":
         print("TTS: Received", msg)
         time.sleep(2)
         done = { "event": "tts-complete", "job_id": msg["job_id"] }
-        channel.basic_publish(exchange='', routing_key='tts-complete', body=json.dumps(done))
+        channel.basic_publish(exchange='', routing_key='tts-complete', body=json.dumps(done), properties=pika.BasicProperties(delivery_mode=2))
         ensure_path(msg["job_id"], "tts")
         print("TTS: Sent tts-complete")
-
+  
     channel.basic_consume(queue='ppt-uploaded', on_message_callback=callback, auto_ack=True)
     channel.start_consuming()
 
@@ -61,7 +55,7 @@ elif ROLE == "renderer":
         print("Renderer: Received", msg)
         time.sleep(3)
         done = { "event": "rendering-complete", "job_id": msg["job_id"] }
-        channel.basic_publish(exchange='', routing_key='rendering-complete', body=json.dumps(done))
+        channel.basic_publish(exchange='', routing_key='rendering-complete', body=json.dumps(done), properties=pika.BasicProperties(delivery_mode=2))
         ensure_path(msg["job_id"], "renderer")
         print("Renderer: Sent rendering-complete")
 
@@ -81,7 +75,7 @@ elif ROLE == "coordinator":
         if all(states[job_id].values()):
             print(f"Coordinator: All done for {job_id}, triggering final assembly.")
             msg = { "event": "start-assembly", "job_id": job_id }
-            channel.basic_publish(exchange='', routing_key='start-assembly', body=json.dumps(msg))
+            channel.basic_publish(exchange='', routing_key='start-assembly', body=json.dumps(msg), properties=pika.BasicProperties(delivery_mode=2))
 
     def tts_callback(ch, method, props, body):
         msg = json.loads(body)

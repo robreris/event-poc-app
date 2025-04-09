@@ -78,11 +78,23 @@ rabbitmqdns="http://$(kubectl get svc my-rabbit -o jsonpath='{.status.loadBalanc
 echo $rabbitmqdns    # paste into browser
 
 # Get credentials for log in
-kubectl get secret my-rabbit-default-user -o jsonpath="{.data.username}" | base64 --decode; echo
-kubectl get secret my-rabbit-default-user -o jsonpath="{.data.password}" | base64 --decode; echo
+rabbitusername=$(kubectl get secret my-rabbit-default-user -o jsonpath="{.data.username}" | base64 --decode; echo)
+rabbitpassword=$(kubectl get secret my-rabbit-default-user -o jsonpath="{.data.password}" | base64 --decode; echo)
+
+# Copy secrets to event-poc namespace
+kubectl create secret generic my-rabbit-default-user \
+  --from-literal=username=$rabbitusername \
+  --from-literal=password=$rabbitpassword \
+  -n event-poc
 ```
 
-Optionally create a ConfigMap with RabbitMQ env vars for login/host/etc
+Build the image and push to ECR, then deploy.
 ```bash
-kubectl create -f rabbitmq-config.yaml
+kubectl create ./k8s/deployments/
+
+# Check logs
+kubectl logs -l app=coordinator -n event-poc
+kubectl logs -l app=tts -n event-poc
+kubectl logs -l app=renderer -n event-poc
+kubectl logs -l app=producer -n event-poc
 ```

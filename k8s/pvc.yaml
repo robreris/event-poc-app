@@ -9,10 +9,12 @@ spec:
   accessModes:
     - ReadWriteMany
   persistentVolumeReclaimPolicy: Retain
-  storageClassName: ""
+  storageClassName: efs-sc
   csi:
     driver: efs.csi.aws.com
-    volumeHandle: fs-092aba2375f66ae5e
+    volumeHandle: fs-0f2d1ae7cf48f0639
+    volumeAttributes:
+      path: "/"
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -22,7 +24,7 @@ metadata:
 spec:
   accessModes:
     - ReadWriteMany
-  storageClassName: ""
+  storageClassName: efs-sc
   volumeName: efs-pv
   resources:
     requests:

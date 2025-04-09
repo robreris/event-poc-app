@@ -8,10 +8,22 @@ spec:
     spec:
       containers:
       - name: producer
-        image: 228122752878.dkr.ecr.us-east-1.amazonaws.com/event-driven-poc-app:latest
+        image: 228122752878.dkr.ecr.us-east-1.amazonaws.com/event-driven-poc:latest
         env:
         - name: ROLE
           value: "producer"
+        - name: RABBIT_HOST
+          value: "my-rabbit-nodes.default.svc.cluster.local"
+        - name: RABBIT_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: my-rabbit-default-user
+              key: username
+        - name: RABBIT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: my-rabbit-default-user
+              key: password
         volumeMounts:
         - name: shared-artifacts
           mountPath: /artifacts
