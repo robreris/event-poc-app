@@ -35,7 +35,7 @@ eksctl create addon --cluster event-driven-poc --name aws-efs-csi-driver --versi
 
 Set up EFS
 ```bash
-./infra/get-cft-params.sh
+./infra/create-efs.sh
 ```
 **Ensure EFS mount security groups have been configured to allow NFS (port 2049) access from the security group attached to cluster EC2 instances**
 
@@ -96,5 +96,13 @@ kubectl create ./k8s/deployments/
 kubectl logs -l app=coordinator -n event-poc
 kubectl logs -l app=tts -n event-poc
 kubectl logs -l app=renderer -n event-poc
-kubectl logs -l app=producer -n event-poc
+kubectl logs -l job-name=producer -n event-poc
+```
+
+SSH into Pod containers for troubleshooting:
+```bash
+kubectl exec -it $(kubectl get pod -l app=coordinator -n event-poc -o jsonpath="{.items[0].metadata.name}") -n event-poc -- sh
+kubectl exec -it $(kubectl get pod -l app=renderer -n event-poc -o jsonpath="{.items[0].metadata.name}") -n event-poc -- sh
+kubectl exec -it $(kubectl get pod -l app=tts -n event-poc -o jsonpath="{.items[0].metadata.name}") -n event-poc -- sh
+kubectl exec -it $(kubectl get pod -l job-name=producer -n event-poc -o jsonpath="{.items[0].metadata.name}") -n event-poc -- sh
 ```

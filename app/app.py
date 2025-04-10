@@ -47,6 +47,7 @@ elif ROLE == "tts":
         print("TTS: Sent tts-complete")
   
     channel.basic_consume(queue='ppt-uploaded', on_message_callback=callback, auto_ack=True)
+    print("Renderer: starting to consume ppt-uploaded...")
     channel.start_consuming()
 
 elif ROLE == "renderer":
@@ -60,6 +61,7 @@ elif ROLE == "renderer":
         print("Renderer: Sent rendering-complete")
 
     channel.basic_consume(queue='ppt-uploaded', on_message_callback=callback, auto_ack=True)
+    print("Renderer: starting to consume ppt-uploaded...")
     channel.start_consuming()
 
 elif ROLE == "coordinator":
@@ -87,7 +89,19 @@ elif ROLE == "coordinator":
         print("Coordinator: Got", msg["event"])
         handle_complete("rendering-complete", msg["job_id"])
 
+    print("Coordinator: starting to consume tts-complete and rendering-complete...")
     channel.basic_consume(queue='tts-complete', on_message_callback=tts_callback, auto_ack=True)
     channel.basic_consume(queue='rendering-complete', on_message_callback=renderer_callback, auto_ack=True)
     channel.start_consuming()
 
+elif ROLE == "assembler":
+    def callback(ch, method, props, body):
+        msg = json.loads(body)
+        print("Assembler: Received", msg)
+        ensure_path(msg["job_id"], "assembler")
+        print("Assembler: Fnal assembly complete")
+
+    print("Assembler: starting to consume start-assembly...")
+    channel.basic_consume(queue='start-assembly', on_message_callback=callback, auto_ack=True)
+    channel.start_consuming()
+       
