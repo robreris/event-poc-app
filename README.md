@@ -50,13 +50,8 @@ sed -i "s/fileSystemId: .*/fileSystemId: $EFS_ID/" infra/efs-sc.yaml
 kubectl create -f infra/efs-sc.yaml
 ```
 
-Update PVC object spec to reference new filesystem id and deploy
+Create namespace and pvc
 ```bash
-EFS_ID=$(aws efs describe-file-systems \
-  --query "FileSystems[?Tags[?Key=='Name' && Value=='eks-event-poc-efs']].FileSystemId" \
-  --output text)
-sed -i "s/volumeHandle: .*/volumeHandle: $EFS_ID/" k8s/pvc.yaml
-
 kubectl create namespace event-poc
 kubectl create -f k8s/pvc.yaml
 ```
@@ -121,5 +116,5 @@ eksctl delete addon --cluster $cluster_name --name aws-efs-csi-driver
 
 aws cloudformation delete-stack --stack-name eksctl-$cluster_name-addon-iamserviceaccount-kube-system-efs-csi-controller-sa
 
-eksctl delete cluster event-driven-poc
+eksctl delete cluster $cluster_name
 ```

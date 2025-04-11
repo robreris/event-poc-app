@@ -1,0 +1,54 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ppt-upload-service
+  namespace: event-poc
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ppt-upload
+  template:
+    metadata:
+      labels:
+        app: ppt-upload
+    spec:
+      containers:
+      - name: ppt-upload
+        image: 228122752878.dkr.ecr.us-east-1.amazonaws.com/event-driven-poc-frontend
+        ports:
+        - containerPort: 80
+        volumeMounts:
+        - name: ppt-upload-vol
+          mountPath: /mnt/efs
+        env:
+        - name: RABBITMQ_HOST
+          value: "my-rabbit-nodes.default.svc.cluster.local"
+        - name: RABBIT_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: my-rabbit-default-user
+              key: username
+        - name: RABBIT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: my-rabbit-default-user
+              key: password      
+      volumes:
+      - name: ppt-upload-vol
+        persistentVolumeClaim:
+          claimName: ppt-upload-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ppt-upload-service
+  namespace: event-poc
+spec:
+  type: LoadBalancer
+  selector:
+    app: ppt-upload
+  ports:
+  - port: 80
+    targetPort: 80
+
