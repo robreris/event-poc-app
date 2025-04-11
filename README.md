@@ -106,3 +106,18 @@ kubectl exec -it $(kubectl get pod -l app=renderer -n event-poc -o jsonpath="{.i
 kubectl exec -it $(kubectl get pod -l app=tts -n event-poc -o jsonpath="{.items[0].metadata.name}") -n event-poc -- sh
 kubectl exec -it $(kubectl get pod -l job-name=producer -n event-poc -o jsonpath="{.items[0].metadata.name}") -n event-poc -- sh
 ```
+
+Cluster teardown:
+```bash
+kubectl delete -f k8s/deployments
+
+kubectl delete -f rabbitmq/rabbitmq-cluster.yaml
+
+aws cloudformation delete-stack --stack-name event-driven-poc-efs
+
+eksctl delete iamserviceaccount --name efs-csi-controller-sa --cluster event-driven-poc
+
+eksctl delete addon --cluster event-driven-poc --name aws-efs-csi-driver
+
+eksctl delete cluster event-driven-poc
+```

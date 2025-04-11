@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-AWS_ACCT="<your AWS Account number>"  # Enter your account number here
+AWS_ACCT=""  # Enter your account number here
 export AWS_DEFAULT_REGION=us-east-1
 
 echo "🔧 Creating EKS cluster..."
@@ -45,9 +45,17 @@ eksctl create addon \
 echo "💾 Creating EFS filesystem..."
 ./infra/create-efs.sh
 
-EFS_ID=$(aws efs describe-file-systems \
-  --query "FileSystems[?Tags[?Key=='Name' && Value=='eks-event-poc-efs']].FileSystemId" \
-  --output text)
+sleep 30
+
+echo "⏳ Waiting for EFS..."
+for i in {1..30}; do
+  EFS_ID=$(aws efs describe-file-systems --query "FileSystems[?Tags[?Key=='Name' && Value=='eks-event-poc-efs']].FileSystemId" --output text)
+  if [[ -n "$EFS_ID" ]]; then
+    break
+  fi
+  echo "🔄 Waiting... ($i/30)"
+  sleep 10
+done
 
 echo "📄 Patching StorageClass with EFS ID: $EFS_ID"
 sed -i "s/fileSystemId: .*/fileSystemId: $EFS_ID/" infra/efs-sc.yaml

@@ -4,7 +4,7 @@ metadata:
   name: my-rabbit
   namespace: default
 spec:
-  replicas: 3
+  replicas: 2
   service:
     type: LoadBalancer
   persistence:

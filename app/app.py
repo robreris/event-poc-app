@@ -31,12 +31,19 @@ channel.queue_declare(queue='start-assembly', durable=True)
 if ROLE == "producer":
     print("Producer waiting for consumers to be ready...")
     time.sleep(10)
+
+    channel.exchange_declare(exchange='ppt-uploaded-ex', exchange_type='fanout', durable=True)
+
     msg = { "event": "ppt-uploaded", "job_id": JOB_ID }
-    channel.basic_publish(exchange='', routing_key='ppt-uploaded', body=json.dumps(msg), properties=pika.BasicProperties(delivery_mode=2))
+    channel.basic_publish(exchange='ppt-uploaded-ex', routing_key='', body=json.dumps(msg), properties=pika.BasicProperties(delivery_mode=2))
     print("Producer: Sent ppt-uploaded")
     time.sleep(5)
 
 elif ROLE == "tts":
+    channel.exchange_declare(exchange='ppt-uploaded-ex', exchange_type='fanout', durable=True)
+    channel.queue_declare(queue='ppt-uploaded-tts', durable=True)
+    channel.queue_bind(exchange='ppt-uploaded-ex', queue='ppt-uploaded-tts')
+
     def callback(ch, method, properties, body):
         msg = json.loads(body)
         print("TTS: Received", msg)
@@ -46,11 +53,15 @@ elif ROLE == "tts":
         ensure_path(msg["job_id"], "tts")
         print("TTS: Sent tts-complete")
   
-    channel.basic_consume(queue='ppt-uploaded', on_message_callback=callback, auto_ack=True)
+    channel.basic_consume(queue='ppt-uploaded-tts', on_message_callback=callback, auto_ack=True)
     print("Renderer: starting to consume ppt-uploaded...")
     channel.start_consuming()
 
 elif ROLE == "renderer":
+    channel.exchange_declare(exchange='ppt-uploaded-ex', exchange_type='fanout', durable=True)
+    channel.queue_declare(queue='ppt-uploaded-renderer', durable=True)
+    channel.queue_bind(exchange='ppt-uploaded-ex', queue='ppt-uploaded-renderer')
+
     def callback(ch, method, properties, body):
         msg = json.loads(body)
         print("Renderer: Received", msg)
@@ -60,7 +71,7 @@ elif ROLE == "renderer":
         ensure_path(msg["job_id"], "renderer")
         print("Renderer: Sent rendering-complete")
 
-    channel.basic_consume(queue='ppt-uploaded', on_message_callback=callback, auto_ack=True)
+    channel.basic_consume(queue='ppt-uploaded-renderer', on_message_callback=callback, auto_ack=True)
     print("Renderer: starting to consume ppt-uploaded...")
     channel.start_consuming()
 
@@ -99,9 +110,8 @@ elif ROLE == "assembler":
         msg = json.loads(body)
         print("Assembler: Received", msg)
         ensure_path(msg["job_id"], "assembler")
-        print("Assembler: Fnal assembly complete")
+        print("Assembler: Final assembly complete")
 
     print("Assembler: starting to consume start-assembly...")
     channel.basic_consume(queue='start-assembly', on_message_callback=callback, auto_ack=True)
-    channel.start_consuming()
-       
+    channel.start_consuming()       
