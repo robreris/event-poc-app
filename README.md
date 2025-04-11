@@ -113,11 +113,13 @@ kubectl delete -f k8s/deployments
 
 kubectl delete -f rabbitmq/rabbitmq-cluster.yaml
 
-aws cloudformation delete-stack --stack-name event-driven-poc-efs
+aws cloudformation delete-stack --stack-name $cluster_name-efs
 
-eksctl delete iamserviceaccount --name efs-csi-controller-sa --cluster event-driven-poc
+eksctl delete iamserviceaccount --name efs-csi-controller-sa --cluster $cluster_name
 
-eksctl delete addon --cluster event-driven-poc --name aws-efs-csi-driver
+eksctl delete addon --cluster $cluster_name --name aws-efs-csi-driver
+
+aws cloudformation delete-stack --stack-name eksctl-$cluster_name-addon-iamserviceaccount-kube-system-efs-csi-controller-sa
 
 eksctl delete cluster event-driven-poc
 ```
