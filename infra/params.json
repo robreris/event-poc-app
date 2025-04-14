@@ -1,18 +1,18 @@
 [
   {
     "ParameterKey": "VpcId",
-    "ParameterValue": "vpc-04d199f19a1933eb9"
+    "ParameterValue": "vpc-03813c72f59d05087"
   },
   {
     "ParameterKey": "SubnetIdAz1",
-    "ParameterValue": "subnet-0feed1a4334abebc6"
+    "ParameterValue": "subnet-084a970ab081c2f3e"
   },
   {
     "ParameterKey": "SubnetIdAz2",
-    "ParameterValue": "subnet-0cd542e0aaf0fe561"
+    "ParameterValue": "subnet-05c3e92c05d87efaf"
   },
   {
     "ParameterKey": "NodeSecurityGroup",
-    "ParameterValue": "sg-03cd8c6abc1d91b3d"
+    "ParameterValue": "sg-0388b503fe34e2435"
   }
 ]

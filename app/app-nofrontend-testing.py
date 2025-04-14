@@ -5,7 +5,8 @@ import json
 import pika
 import socket
 
-ROLE = os.getenv("ROLE", "")
+JOB_ID = "job-123"
+ROLE = os.getenv("ROLE", "producer")
 print(f"######Role is: {ROLE}")
 
 def ensure_path(job_id, role):
@@ -27,7 +28,18 @@ channel.queue_declare(queue='tts-complete', durable=True)
 channel.queue_declare(queue='rendering-complete', durable=True)
 channel.queue_declare(queue='start-assembly', durable=True)
 
-if ROLE == "tts":
+if ROLE == "producer":
+    print("Producer waiting for consumers to be ready...")
+    time.sleep(10)
+
+    channel.exchange_declare(exchange='ppt-uploaded-ex', exchange_type='fanout', durable=True)
+
+    msg = { "event": "ppt-uploaded", "job_id": JOB_ID }
+    channel.basic_publish(exchange='ppt-uploaded-ex', routing_key='', body=json.dumps(msg), properties=pika.BasicProperties(delivery_mode=2))
+    print("Producer: Sent ppt-uploaded")
+    time.sleep(5)
+
+elif ROLE == "tts":
     channel.exchange_declare(exchange='ppt-uploaded-ex', exchange_type='fanout', durable=True)
     channel.queue_declare(queue='ppt-uploaded-tts', durable=True)
     channel.queue_bind(exchange='ppt-uploaded-ex', queue='ppt-uploaded-tts')

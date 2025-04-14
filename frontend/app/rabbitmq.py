@@ -11,16 +11,17 @@ params = pika.ConnectionParameters(host=host, credentials=credentials)
 print(f"RabbitMQ host: {host}")
 
 def publish_message(data: dict):
+
     connection = pika.BlockingConnection(params)
     channel = connection.channel()
     channel.queue_declare(queue=QUEUE_NAME, durable=True)
 
+    channel.exchange_declare(exchange='ppt-uploaded-ex', exchange_type='fanout', durable=True)    
     message = json.dumps(data)
     channel.basic_publish(
-        exchange='',
-        routing_key=QUEUE_NAME,
+        exchange='ppt-uploaded-ex',
+        routing_key='',
         body=message,
         properties=pika.BasicProperties(delivery_mode=2)  # make message persistent
     )
-
     connection.close()

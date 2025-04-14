@@ -19,8 +19,8 @@ spec:
         ports:
         - containerPort: 80
         volumeMounts:
-        - name: ppt-upload-vol
-          mountPath: /mnt/efs
+        - name: shared-artifacts
+          mountPath: /artifacts
         env:
         - name: RABBITMQ_HOST
           value: "my-rabbit-nodes.default.svc.cluster.local"
@@ -35,9 +35,9 @@ spec:
               name: my-rabbit-default-user
               key: password      
       volumes:
-      - name: ppt-upload-vol
+      - name: shared-artifacts
         persistentVolumeClaim:
-          claimName: ppt-upload-pvc
+          claimName: shared-artifacts
 ---
 apiVersion: v1
 kind: Service

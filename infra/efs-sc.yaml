@@ -6,7 +6,7 @@ provisioner: efs.csi.aws.com
 volumeBindingMode: Immediate
 parameters:
   provisioningMode: efs-ap
-  fileSystemId: fs-0d082b3749cbbe70c
+  fileSystemId: fs-0b84af1f9b4f1f5f8
   directoryPerms: "700"
   gidRangeStart: "1000"
   gidRangeEnd: "2000"
