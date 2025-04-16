@@ -2,9 +2,13 @@
 
 Create cluster
 ```bash
-export AWS_DEFAULT_REGION=us-east-1
+AWS_ACCT=<your AWS Account number>
+AWS_DEFAULT_REGION=us-east-1
+cluster_name="event-driven-poc"
+app_namespace="event-poc"
+
+sed -i "/^metadata:/,/^[^[:space:]]/s/^\([[:space:]]*name:[[:space:]]*\).*/\1$cluster_name/" eks/event-poc-cluster.yaml
 eksctl create cluster -f eks/event-poc-cluster.yaml
-cluster_name=$(eksctl get cluster --output json | jq -r .[].Name)
 ```
 
 Set up the EFS CSI Driver Add-on
@@ -29,31 +33,25 @@ TRUST_POLICY=$(aws iam get-role --output json --role-name $role_name --query 'Ro
 
 aws iam update-assume-role-policy --role-name $role_name --policy-document "$TRUST_POLICY"
 
-AWS_ACCT=<your AWS Account number>
 eksctl create addon --cluster event-driven-poc --name aws-efs-csi-driver --version latest --service-account-role-arn arn:aws:iam::$AWS_ACCT:role/AmazonEKS_EFS_CSI_DriverRole --force
 ```
 
 Set up EFS
 ```bash
-./infra/create-efs.sh
+sed -i "s/CLUSTER_NAME=.*/CLUSTER_NAME=\"$cluster_name\"/" eks/infra/create-efs.sh
+./eks/infra/create-efs.sh
 ```
 **Ensure EFS mount security groups have been configured to allow NFS (port 2049) access from the security group attached to cluster EC2 instances**
 
 Update the EFS storage class object spec with new file system id and deploy
 ```bash
 EFS_ID=$(aws efs describe-file-systems \
-  --query "FileSystems[?Tags[?Key=='Name' && Value=='eks-event-poc-efs']].FileSystemId" \
+  --query "FileSystems[?Tags[?Key=='Name' && Value=='$cluster_name-efs']].FileSystemId" \
   --output text)
 
-sed -i "s/fileSystemId: .*/fileSystemId: $EFS_ID/" infra/efs-sc.yaml
+sed -i "s/fileSystemId: .*/fileSystemId: $EFS_ID/" eks/infra/efs-sc.yaml
 
-kubectl create -f infra/efs-sc.yaml
-```
-
-Create namespace and pvc
-```bash
-kubectl create namespace event-poc
-kubectl create -f k8s/pvc.yaml
+kubectl create -f eks/infra/efs-sc.yaml
 ```
 
 Set up RabbitMQ K8S Operator
@@ -76,17 +74,25 @@ echo $rabbitmqdns    # paste into browser
 rabbitusername=$(kubectl get secret my-rabbit-default-user -o jsonpath="{.data.username}" | base64 --decode; echo)
 rabbitpassword=$(kubectl get secret my-rabbit-default-user -o jsonpath="{.data.password}" | base64 --decode; echo)
 
-# Copy secrets to event-poc namespace
+# Copy secrets to app namespace
 kubectl create secret generic my-rabbit-default-user \
   --from-literal=username=$rabbitusername \
   --from-literal=password=$rabbitpassword \
-  -n event-poc
+  -n $app_namespace
 ```
 
 Build the image and push to ECR, then deploy.
-```bash
-kubectl create ./k8s/deployments/
 
+Create namespace, update deployment and pvc specs, and deploy
+```bash
+kubectl create namespace $app_namespace
+find eks/deployments -type f -name '*.yaml' -exec sed -i "s/namespace:.*/namespace: $cluster_name/" {} +
+kubectl create -f eks/deployments/
+```
+
+Logging and troubleshooting:
+
+```bash
 # Check logs
 kubectl logs -l app=coordinator -n event-poc
 kubectl logs -l app=tts -n event-poc
@@ -104,7 +110,7 @@ kubectl exec -it $(kubectl get pod -l job-name=producer -n event-poc -o jsonpath
 
 Cluster teardown:
 ```bash
-kubectl delete -f k8s/deployments
+kubectl delete -f eks/deployments/
 
 kubectl delete -f rabbitmq/rabbitmq-cluster.yaml
 

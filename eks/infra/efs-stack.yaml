@@ -18,6 +18,10 @@ Parameters:
     Type: String
     Description: Security group used by EKS worker nodes
 
+  EfsName:
+    Type: String
+    Description: EFS Filesystem Name
+
 Resources:
   EfsFileSystem:
     Type: AWS::EFS::FileSystem
@@ -27,7 +31,7 @@ Resources:
       ThroughputMode: bursting
       FileSystemTags:
         - Key: Name
-          Value: eks-event-poc-efs
+          Value: !Ref EfsName
 
   EFSSecurityGroup:
     Type: AWS::EC2::SecurityGroup

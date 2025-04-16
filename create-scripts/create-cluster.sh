@@ -2,14 +2,13 @@
 set -euo pipefail
 
 AWS_ACCT=""  # Enter your account number here
+cluster_name="event-driven-poc"
+app_namespace="event-poc"
 export AWS_DEFAULT_REGION=us-east-1
 
-echo "🔧 Creating EKS cluster..."
+echo "🔧 Creating EKS cluster: "$cluster_name
+sed -i "/^metadata:/,/^[^[:space:]]/s/^\([[:space:]]*name:[[:space:]]*\).*/\1$cluster_name/" eks/event-poc-cluster.yaml
 eksctl create cluster -f eks/event-poc-cluster.yaml
-
-echo "📌 Getting cluster name..."
-cluster_name=$(eksctl get cluster --output json | jq -r .[].Name)
-echo "✅ Cluster name: $cluster_name"
 
 role_name="AmazonEKS_EFS_CSI_DriverRole"
 
@@ -43,13 +42,14 @@ eksctl create addon \
   --force
 
 echo "💾 Creating EFS filesystem..."
-./infra/create-efs.sh
+sed -i "s/CLUSTER_NAME=.*/CLUSTER_NAME=\"$cluster_name\"/" eks/infra/create-efs.sh
+./eks/infra/create-efs.sh
 
 sleep 30
 
 echo "⏳ Waiting for EFS..."
 for i in {1..30}; do
-  EFS_ID=$(aws efs describe-file-systems --query "FileSystems[?Tags[?Key=='Name' && Value=='eks-event-poc-efs']].FileSystemId" --output text)
+  EFS_ID=$(aws efs describe-file-systems --query "FileSystems[?Tags[?Key=='Name' && Value=='$cluster_name-efs']].FileSystemId" --output text)
   if [[ -n "$EFS_ID" ]]; then
     break
   fi
@@ -58,21 +58,15 @@ for i in {1..30}; do
 done
 
 echo "📄 Patching StorageClass with EFS ID: $EFS_ID"
-sed -i "s/fileSystemId: .*/fileSystemId: $EFS_ID/" infra/efs-sc.yaml
-kubectl create -f infra/efs-sc.yaml
-
-echo "📄 Patching PVC with EFS ID..."
-sed -i "s/volumeHandle: .*/volumeHandle: $EFS_ID/" k8s/pvc.yaml
-
-echo "📁 Creating namespaces and PVC..."
-kubectl create namespace event-poc
-kubectl create -f k8s/pvc.yaml
+sed -i "s/fileSystemId: .*/fileSystemId: $EFS_ID/" eks/infra/efs-sc.yaml
+kubectl create -f eks/infra/efs-sc.yaml
 
 echo "📡 Installing RabbitMQ Operator..."
 kubectl create namespace rabbitmq-system
 helm repo add bitnami https://charts.bitnami.com/bitnami
 helm repo update
 helm install rabbitmq-operator bitnami/rabbitmq-cluster-operator --namespace rabbitmq-system
+kubectl wait --for=condition=Ready pod -l app.kubernetes.io/name=rabbitmq-cluster-operator --timeout=60s
 kubectl apply -f rabbitmq/rabbitmq-cluster.yaml
 
 echo "⏳ Waiting for RabbitMQ LoadBalancer to become ready..."
@@ -96,18 +90,17 @@ echo "🌐 RabbitMQ URL: $rabbitmqdns"
 rabbitusername=$(kubectl get secret my-rabbit-default-user -o jsonpath="{.data.username}" | base64 --decode)
 rabbitpassword=$(kubectl get secret my-rabbit-default-user -o jsonpath="{.data.password}" | base64 --decode)
 
+
+echo "📁 Creating app namespace..."
+kubectl create namespace $app_namespace
 kubectl create secret generic my-rabbit-default-user \
   --from-literal=username="$rabbitusername" \
   --from-literal=password="$rabbitpassword" \
-  -n event-poc
+  -n $app_namespace
+find k8s -type f -name '*.yaml' -exec sed -i "s/namespace:.*/namespace: $cluster_name/" {} +
 
-echo "📦 Build and push Docker image to ECR..."
+echo "Cluster created, ready to build images, push to ECR, and deploy."
 
-echo "🚀 Deploying app..."
-kubectl create -f k8s/deployments/
-
-echo "📄 Tail logs for each component:"
-kubectl logs -l app=coordinator -n event-poc
-kubectl logs -l app=tts -n event-poc
-kubectl logs -l app=renderer -n event-poc
-kubectl logs -l job-name=producer -n event-poc
+#echo "🚀 Deploying app..."
+#kubectl create -f k8s/pvc.yaml
+#kubectl create -f k8s/deployments/

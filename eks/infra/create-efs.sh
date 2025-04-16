@@ -2,8 +2,8 @@
 
 CLUSTER_NAME="event-driven-poc"
 REGION="us-east-1"
-PARAM_FILE="infra/params.json"
-TEMPLATE="infra/efs.yaml"
+PARAM_FILE="eks/infra/efs-stack-params.json"
+TEMPLATE="eks/infra/efs-stack.yaml"
 
 echo "Fetching EKS cluster details for: $CLUSTER_NAME"
 
@@ -13,7 +13,6 @@ VPC_ID=$(echo "$CLUSTER_INFO" | jq -r '.[0].ResourcesVpcConfig.VpcId')
 SUBNET_IDS=$(echo "$CLUSTER_INFO" | jq -r '.[0].ResourcesVpcConfig.SubnetIds[]' | head -n 2)
 SUBNET_ID_1=$(echo "$SUBNET_IDS" | sed -n '1p')
 SUBNET_ID_2=$(echo "$SUBNET_IDS" | sed -n '2p')
-#SG_ID=$(aws ec2 describe-security-groups --filters "Name=group-name,Values=*ClusterSharedNodeSecurityGroup*" --query "SecurityGroups[*].GroupId" --output text --region "$REGION")
 SG_ID=$(aws ec2 describe-instances --filters "Name=tag:eks:cluster-name,Values=$CLUSTER_NAME" --query 'Reservations[*].Instances[*].SecurityGroups[*].GroupId' --output text | uniq)
 if [[ -z "$VPC_ID" || -z "$SUBNET_ID_1" || -z "$SUBNET_ID_2" || -z "$SG_ID" ]]; then
   echo "❌ Failed to retrieve all required values. Aborting."
@@ -43,7 +42,11 @@ cat > "$PARAM_FILE" <<EOF
   {
     "ParameterKey": "NodeSecurityGroup",
     "ParameterValue": "$SG_ID"
-  }
+  },
+  {
+    "ParameterKey": "EfsName",
+    "ParameterValue": "$CLUSTER_NAME-efs"
+  }  
 ]
 EOF
 
@@ -51,8 +54,8 @@ echo "📄 CloudFormation parameters written to $PARAM_FILE"
 echo "Deploying template..."
 
 aws cloudformation create-stack \
-  --stack-name event-driven-poc-efs \
+  --stack-name $CLUSTER_NAME-efs \
   --template-body file://./$TEMPLATE \
   --parameters file://./$PARAM_FILE \
   --capabilities CAPABILITY_NAMED_IAM \
-  --region $REGION
+  --region $AWS_DEFAULT_REGION

@@ -23,7 +23,7 @@ async def upload_file(file: UploadFile = File(...)):
         "job_id": hashlib.sha256(datetime.utcnow().isoformat().encode()).hexdigest()[:10]
     }
 
-    saved_path = save_to_efs(file, file_id, metadata)
+    metadata["file_path"] = save_to_efs(file, file_id, metadata)
     publish_message(metadata)
     print("Powerpoint uploaded and sent...")
     return {"status": "ok", "file_id": file_id}
