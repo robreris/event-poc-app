@@ -1,10 +1,7 @@
 from pptx import Presentation
 from pathlib import Path
 
-NOTES_DIR = Path("notes")
-NOTES_DIR.mkdir(exist_ok=True)
-
-def extract_notes(pptx_path: Path) -> list:
+def extract_notes(pptx_path: Path, output_dir: Path) -> list:
     prs = Presentation(pptx_path)
     output = []
 
@@ -18,7 +15,7 @@ def extract_notes(pptx_path: Path) -> list:
         }
 
         # Write to individual text file
-        note_path = NOTES_DIR / f"slide_{i:02d}.txt"
+        note_path = output_dir / f"slide_{i:02d}.txt"
         with open(note_path, "w", encoding="utf-8") as f:
             f.write(notes_text)
 

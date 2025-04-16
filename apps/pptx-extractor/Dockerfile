@@ -6,7 +6,7 @@ WORKDIR /app
 
 # Copy environment and app files
 COPY environment.yml .
-COPY . .
+COPY app .
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
@@ -26,4 +26,4 @@ SHELL ["conda", "run", "-n", "pptx_extractor_env", "/bin/bash", "-c"]
 EXPOSE 5000
 
 # Run the Flask app
-CMD ["/bin/bash", "-c", "source activate pptx_extractor_env && python main.py"]
+CMD ["/bin/bash", "-c", "source activate pptx_extractor_env && python api_service.py"]

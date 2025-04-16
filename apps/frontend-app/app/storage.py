@@ -4,10 +4,10 @@ from fastapi import UploadFile
 PPT_PATH = "/artifacts/powerpoints/"
 MD_PATH = "/artifacts/metadata/"
 
-def save_to_efs(file: UploadFile, file_id: str, mdata: dict[str, any]) -> str:
+def save_to_efs(file: UploadFile, file_name: str, mdata: dict[str, any]) -> str:
     os.makedirs(PPT_PATH, exist_ok=True)
     os.makedirs(MD_PATH, exist_ok=True)
-    full_path_ppt = os.path.join(PPT_PATH, f"{file_id}.pptx")
+    full_path_ppt = os.path.join(PPT_PATH, f"{file_name}")
     full_path_mdata = os.path.join(MD_PATH, f"{mdata['job_id']}-metadata.txt")
 
     with open(full_path_ppt, "wb") as f:

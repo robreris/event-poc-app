@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-AWS_ACCT=""  # Enter your account number here
+AWS_ACCT="228122752878"  # Enter your account number here
 cluster_name="event-driven-poc"
 app_namespace="event-poc"
 export AWS_DEFAULT_REGION=us-east-1
@@ -66,7 +66,7 @@ kubectl create namespace rabbitmq-system
 helm repo add bitnami https://charts.bitnami.com/bitnami
 helm repo update
 helm install rabbitmq-operator bitnami/rabbitmq-cluster-operator --namespace rabbitmq-system
-kubectl wait --for=condition=Ready pod -l app.kubernetes.io/name=rabbitmq-cluster-operator --timeout=60s
+kubectl wait --for=condition=Ready pod -l app.kubernetes.io/name=rabbitmq-cluster-operator -n rabbitmq-system --timeout=60s
 kubectl apply -f rabbitmq/rabbitmq-cluster.yaml
 
 echo "⏳ Waiting for RabbitMQ LoadBalancer to become ready..."

@@ -18,15 +18,16 @@ async def upload_file(file: UploadFile = File(...)):
     metadata = {
         "event": "ppt-uploaded",
         "filename": file.filename,
+        "file_path": "/artifacts/powerpoints/"+file.filename,
         "upload_time": datetime.utcnow().isoformat(),
         "file_id": file_id,
         "job_id": hashlib.sha256(datetime.utcnow().isoformat().encode()).hexdigest()[:10]
     }
 
-    metadata["file_path"] = save_to_efs(file, file_id, metadata)
+    metadata["file_path"] = save_to_efs(file, file.filename, metadata)
     publish_message(metadata)
     print("Powerpoint uploaded and sent...")
-    return {"status": "ok", "file_id": file_id}
+    return {"status": "ok", "file_id": file_id, "file_name":file.filename}
 
 @app.get("/")
 def get_form():

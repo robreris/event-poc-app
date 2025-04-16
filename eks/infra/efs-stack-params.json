@@ -1,22 +1,22 @@
 [
   {
     "ParameterKey": "VpcId",
-    "ParameterValue": "vpc-00fce85fcac40bafa"
+    "ParameterValue": "vpc-0b341d4951b65758f"
   },
   {
     "ParameterKey": "SubnetIdAz1",
-    "ParameterValue": "subnet-06c723a24a61fa025"
+    "ParameterValue": "subnet-06ab4c58b85bf2311"
   },
   {
     "ParameterKey": "SubnetIdAz2",
-    "ParameterValue": "subnet-0cb61d14119c93fc4"
+    "ParameterValue": "subnet-08b60e6c3222aa1d5"
   },
   {
     "ParameterKey": "NodeSecurityGroup",
-    "ParameterValue": "sg-07726a3491be642b3"
+    "ParameterValue": "sg-0c7dc5a12387d1d15"
   },
   {
     "ParameterKey": "EfsName",
-    "ParameterValue": "eks-event-poc-efs"
-  }
+    "ParameterValue": "event-driven-poc-efs"
+  }  
 ]

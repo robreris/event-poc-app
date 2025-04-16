@@ -14,8 +14,13 @@ spec:
         app: ppt-extractor
     spec:
       containers:
-      - name: ppt-upload
+      - name: ppt-extractor
         image: 228122752878.dkr.ecr.us-east-1.amazonaws.com/event-driven-poc-ppt-extractor
+        command: ["/bin/bash", "-c"]
+        args:
+          - |
+            source activate pptx_extractor_env && \
+            celery -A tasks worker --loglevel=info -Q ppt_tasks
         ports:
         - containerPort: 80
         volumeMounts:

@@ -15,7 +15,10 @@ CELERY_BROKER_URL = (
 )
 
 # Set up the Celery client (does NOT run tasks—just enqueues them)
-celery_app = Celery(broker=CELERY_BROKER_URL)
+celery_app = Celery(
+    'tasks',
+    broker=CELERY_BROKER_URL
+)
 
 def publish_message(data: dict):
     """
@@ -23,7 +26,7 @@ def publish_message(data: dict):
     The task must be registered as @celery_app.task in the worker side.
     """
     task_name = "tasks.process_pptx"  # must match your worker task name
-    args = [data["file_path"], data["filename"]]  # match task signature
+    args = [data["file_path"], data["filename"], data["job_id"]]  # match task signature
 
     result = celery_app.send_task(
         name=task_name,
