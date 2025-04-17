@@ -1,0 +1,10 @@
+name: azure_speech_env
+dependencies:
+  - python=3.11
+  - flask
+  - pip
+  - libgcc-ng
+  - libstdcxx-ng
+  - pip:
+      - azure-cognitiveservices-speech==1.38.0
+      - celery==5.5.1

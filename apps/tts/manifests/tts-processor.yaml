@@ -1,0 +1,55 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tts-processor-service
+  namespace: event-poc
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: tts-processor
+  template:
+    metadata:
+      labels:
+        app: tts-processor
+    spec:
+      containers:
+      - name: tts-processor
+        image: 228122752878.dkr.ecr.us-east-1.amazonaws.com/event-driven-poc-tts-processor
+        command: ["/bin/bash", "-c"]
+        args:
+          - |
+            source activate tts_processor_env && \
+            celery -A tasks worker --loglevel=info -Q ppt_tasks
+        ports:
+        - containerPort: 80
+        volumeMounts:
+        - name: shared-artifacts
+          mountPath: /artifacts
+        env:
+        - name: RABBITMQ_HOST
+          value: "my-rabbit-nodes.default.svc.cluster.local"
+        - name: SPEECH_KEY
+          valueFrom:
+            secretKeyRef:
+              name: azure-speech-secret
+              key: SPEECH_KEY
+        - name: SPEECH_REGION
+          valueFrom:
+            secretKeyRef:
+              name: azure-speech-secret
+              key: SPEECH_REGION
+        - name: RABBIT_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: my-rabbit-default-user
+              key: username
+        - name: RABBIT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: my-rabbit-default-user
+              key: password      
+      volumes:
+      - name: shared-artifacts
+        persistentVolumeClaim:
+          claimName: shared-artifacts
