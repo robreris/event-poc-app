@@ -2,8 +2,8 @@
 
 CLUSTER_NAME="event-driven-poc"
 REGION="us-east-1"
-PARAM_FILE="eks/infra/efs-stack-params.json"
-TEMPLATE="eks/infra/efs-stack.yaml"
+PARAM_FILE="eks/efs/efs-stack-params.json"
+TEMPLATE="eks/efs/efs-stack.yaml"
 
 echo "Fetching EKS cluster details for: $CLUSTER_NAME"
 

@@ -19,7 +19,9 @@ spec:
         command: ["/bin/bash", "-c"]
         args:
           - |
-            source activate tts_processor_env && \
+            source /opt/conda/etc/profile.d/conda.sh && \
+            conda activate tts_processor_env && \
+            echo "Starting celery..." && \
             celery -A tts_processor worker --loglevel=info -Q tts_tasks
         ports:
         - containerPort: 80

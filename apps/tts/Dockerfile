@@ -11,11 +11,11 @@ COPY app .
 RUN conda env create -f environment.yml
 
 # Activate environment
-ENV PATH /opt/conda/envs/azure_speech_env/bin:$PATH
-SHELL ["conda", "run", "-n", "azure_speech_env", "/bin/bash", "-c"]
+ENV PATH /opt/conda/envs/tts_processor_env/bin:$PATH
+SHELL ["conda", "run", "-n", "tts_processor_env", "/bin/bash", "-c"]
 
 # Expose the Flask port
 EXPOSE 5000
 
 # Run the app
-CMD ["/bin/bash", "-c", "source activate azure_speech_env && python api_service.py"]
+CMD ["/bin/bash", "-c", "source activate tts_processor_env && python api_service.py"]

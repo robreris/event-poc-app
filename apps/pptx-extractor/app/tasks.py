@@ -50,14 +50,23 @@ def process_pptx(file_path, filename, job_id):
         IMS_JOB_DIR.mkdir(parents=True, exist_ok=True)
         convert_pptx_to_images(pptx_path, IMS_JOB_DIR)
         # Optionally, you can store or send results here (e.g., update a database).
-        result = {
+        mdata = {
             "status": "processed",
             "filename": filename,
+            "notes_dir": str(NOTES_JOB_DIR),
             "job_id": job_id,
             "slides_processed": len(list(SLIDES_DIR.glob("slide_*.png")))
         }
-        print(f"Successfully processed {filename}: {result}")
-        return result
+        print(f"Successfully processed {filename}.")
+
+        task_name = "tts_processor.synthesize"
+        args = [mdata["notes_dir"], mdata["job_id"]]
+        result = celery_app.send_task(
+            name=task_name,
+            args=args,
+            queue="tts_tasks",
+        )
+        return mdata
     except Exception as e:
         # Handle exceptions, log errors, or trigger retries as needed.
         error_result = {"status": "error", "filename": filename, "job_id": job_id, "error": str(e)}

@@ -1,4 +1,4 @@
-name: azure_speech_env
+name: tts_processor_env
 dependencies:
   - python=3.11
   - flask

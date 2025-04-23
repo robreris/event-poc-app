@@ -1,26 +1,21 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: tts-processor-service
+  name: ppt-upload-service
   namespace: event-poc
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: tts-processor
+      app: ppt-upload
   template:
     metadata:
       labels:
-        app: tts-processor
+        app: ppt-upload
     spec:
       containers:
-      - name: tts-processor
-        image: 228122752878.dkr.ecr.us-east-1.amazonaws.com/event-driven-poc-tts-processor
-        command: ["/bin/bash", "-c"]
-        args:
-          - |
-            source activate tts_processor_env && \
-            celery -A tts_processor worker --loglevel=info -Q tts_tasks
+      - name: ppt-upload
+        image: 228122752878.dkr.ecr.us-east-1.amazonaws.com/event-driven-poc-frontend
         ports:
         - containerPort: 80
         volumeMounts:
@@ -29,16 +24,6 @@ spec:
         env:
         - name: RABBITMQ_HOST
           value: "my-rabbit-nodes.default.svc.cluster.local"
-        - name: SPEECH_KEY
-          valueFrom:
-            secretKeyRef:
-              name: azure-speech-secret
-              key: SPEECH_KEY
-        - name: SPEECH_REGION
-          valueFrom:
-            secretKeyRef:
-              name: azure-speech-secret
-              key: SPEECH_REGION
         - name: RABBIT_USERNAME
           valueFrom:
             secretKeyRef:
@@ -53,3 +38,17 @@ spec:
       - name: shared-artifacts
         persistentVolumeClaim:
           claimName: shared-artifacts
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ppt-upload-service
+  namespace: event-poc
+spec:
+  type: LoadBalancer
+  selector:
+    app: ppt-upload
+  ports:
+  - port: 80
+    targetPort: 80
+

@@ -42,8 +42,8 @@ eksctl create addon \
   --force
 
 echo "💾 Creating EFS filesystem..."
-sed -i "s/CLUSTER_NAME=.*/CLUSTER_NAME=\"$cluster_name\"/" eks/infra/create-efs.sh
-./eks/infra/create-efs.sh
+sed -i "s/CLUSTER_NAME=.*/CLUSTER_NAME=\"$cluster_name\"/" eks/efs/create-efs.sh
+./eks/efs/create-efs.sh
 
 sleep 30
 
@@ -58,8 +58,8 @@ for i in {1..30}; do
 done
 
 echo "📄 Patching StorageClass with EFS ID: $EFS_ID"
-sed -i "s/fileSystemId: .*/fileSystemId: $EFS_ID/" eks/infra/efs-sc.yaml
-kubectl create -f eks/infra/efs-sc.yaml
+sed -i "s/fileSystemId: .*/fileSystemId: $EFS_ID/" eks/efs/efs-sc.yaml
+kubectl create -f eks/efs/efs-sc.yaml
 
 echo "📡 Installing RabbitMQ Operator..."
 kubectl create namespace rabbitmq-system
@@ -67,6 +67,13 @@ helm repo add bitnami https://charts.bitnami.com/bitnami
 helm repo update
 helm install rabbitmq-operator bitnami/rabbitmq-cluster-operator --namespace rabbitmq-system
 kubectl wait --for=condition=Ready pod -l app.kubernetes.io/name=rabbitmq-cluster-operator -n rabbitmq-system --timeout=60s
+
+echo "Waiting for RabbitmqCluster to be registered..."
+while ! kubectl get crd rabbitmqclusters.rabbitmq.com >/dev/null 2>&1; do
+  sleep 2
+done
+echo "RabbitmqCluster CRD ready, proceeding to deploy..."
+
 kubectl apply -f rabbitmq/rabbitmq-cluster.yaml
 
 echo "⏳ Waiting for RabbitMQ LoadBalancer to become ready..."
@@ -97,10 +104,10 @@ kubectl create secret generic my-rabbit-default-user \
   --from-literal=username="$rabbitusername" \
   --from-literal=password="$rabbitpassword" \
   -n $app_namespace
-find k8s -type f -name '*.yaml' -exec sed -i "s/namespace:.*/namespace: $cluster_name/" {} +
 
 echo "Cluster created, ready to build images, push to ECR, and deploy."
 
 #echo "🚀 Deploying app..."
+#find k8s -type f -name '*.yaml' -exec sed -i "s/namespace:.*/namespace: $cluster_name/" {} +
 #kubectl create -f k8s/pvc.yaml
 #kubectl create -f k8s/deployments/

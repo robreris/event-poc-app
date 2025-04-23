@@ -1,6 +1,9 @@
-### Basic RabbitMQ Cluster Set-Up
+## Basic RabbitMQ Cluster Set-Up
 
-Create cluster
+### Create cluster
+
+You can use the script at ./create-scripts/create-cluster.sh to deploy, or proceed with the following steps.
+
 ```bash
 AWS_ACCT=<your AWS Account number>
 AWS_DEFAULT_REGION=us-east-1
@@ -38,8 +41,8 @@ eksctl create addon --cluster event-driven-poc --name aws-efs-csi-driver --versi
 
 Set up EFS
 ```bash
-sed -i "s/CLUSTER_NAME=.*/CLUSTER_NAME=\"$cluster_name\"/" eks/infra/create-efs.sh
-./eks/infra/create-efs.sh
+sed -i "s/CLUSTER_NAME=.*/CLUSTER_NAME=\"$cluster_name\"/" eks/efs/create-efs.sh
+./eks/efs/create-efs.sh
 ```
 **Ensure EFS mount security groups have been configured to allow NFS (port 2049) access from the security group attached to cluster EC2 instances**
 
@@ -49,9 +52,9 @@ EFS_ID=$(aws efs describe-file-systems \
   --query "FileSystems[?Tags[?Key=='Name' && Value=='$cluster_name-efs']].FileSystemId" \
   --output text)
 
-sed -i "s/fileSystemId: .*/fileSystemId: $EFS_ID/" eks/infra/efs-sc.yaml
+sed -i "s/fileSystemId: .*/fileSystemId: $EFS_ID/" eks/efs/efs-sc.yaml
 
-kubectl create -f eks/infra/efs-sc.yaml
+kubectl create -f eks/efs/efs-sc.yaml
 ```
 
 Set up RabbitMQ K8S Operator
@@ -81,9 +84,11 @@ kubectl create secret generic my-rabbit-default-user \
   -n $app_namespace
 ```
 
-Build the image and push to ECR, then deploy.
+Build the images and push to ECR, then deploy.
 
-Create namespace, update deployment and pvc specs, and deploy
+### Simple Testing POC
+
+Create namespace, update deployments and pvc specs, and deploy
 ```bash
 kubectl create namespace $app_namespace
 find eks/deployments -type f -name '*.yaml' -exec sed -i "s/namespace:.*/namespace: $cluster_name/" {} +
@@ -108,6 +113,25 @@ kubectl exec -it $(kubectl get pod -l app=tts -n event-poc -o jsonpath="{.items[
 kubectl exec -it $(kubectl get pod -l job-name=producer -n event-poc -o jsonpath="{.items[0].metadata.name}") -n event-poc -- sh
 ```
 
+### Powerpoint Extractor/TTS POC
+
+See apps/tts/README.md for info on setting up AWS Secrets Manager secret integration (for Azure TTS settings). 
+
+To deploy cluster:
+
+```bash
+kubectl create -f eks/shared-artifacts-pvc.yaml
+kubectl deploy -f apps/frontend-app/manifests/
+kubectl deploy -f apps/pptx-extractor/manifests/
+kubectl deploy -f apps/tts/manifests/
+```
+
+Get Powerpoint upload URL (access in a browser via http):
+
+```bash
+kubectl get svc ppt-upload-service -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' -n event-poc
+```
+
 Cluster teardown:
 ```bash
 kubectl delete -f eks/deployments/
@@ -120,6 +144,7 @@ eksctl delete iamserviceaccount --name efs-csi-controller-sa --cluster $cluster_
 
 eksctl delete addon --cluster $cluster_name --name aws-efs-csi-driver
 
+aws cloudformation delete-stack --stack-name eksctl-$cluster_name-addon-iamserviceaccount-event-poc-eso-sa
 aws cloudformation delete-stack --stack-name eksctl-$cluster_name-addon-iamserviceaccount-kube-system-efs-csi-controller-sa
 
 eksctl delete cluster $cluster_name
