@@ -3,101 +3,95 @@ import subprocess
 import shutil
 from celery import Celery
 from pathlib import Path
-import os
 
 # Environment-based configuration
-RABBITMQ_HOST = os.environ.get("RABBITMQ_HOST", "rabbitmq")
-RABBITMQ_USER = os.environ.get("RABBIT_USERNAME", "guest")
-RABBITMQ_PASS = os.environ.get("RABBIT_PASSWORD", "guest")
-RABBITMQ_PORT = os.environ.get("RABBITMQ_PORT", "5672")
-RABBITMQ_VHOST = os.environ.get("RABBITMQ_VHOST", "/")
+RABBITMQ_HOST = os.getenv("RABBITMQ_HOST", "rabbitmq")
+RABBITMQ_USER = os.getenv("RABBIT_USERNAME", "guest")
+RABBITMQ_PASS = os.getenv("RABBIT_PASSWORD", "guest")
+RABBITMQ_PORT = os.getenv("RABBITMQ_PORT", "5672")
+RABBITMQ_VHOST = os.getenv("RABBITMQ_VHOST", "/")
 
-# Full AMQP broker URL
-CELERY_BROKER_URL = (
-    f"amqp://{RABBITMQ_USER}:{RABBITMQ_PASS}@{RABBITMQ_HOST}:{RABBITMQ_PORT}{RABBITMQ_VHOST}"
-)
+CELERY_BROKER_URL = f"amqp://{RABBITMQ_USER}:{RABBITMQ_PASS}@{RABBITMQ_HOST}:{RABBITMQ_PORT}{RABBITMQ_VHOST}"
+celery_app = Celery('video_producer', broker=CELERY_BROKER_URL)
 
-celery_app = Celery(
-    'video_producer',
-     broker=CELERY_BROKER_URL
-)
-
-OUTPUT_DIR = Path(os.getenv("VIDEO_OUT_DIR", "/artifacts/video-output/"))
-OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+OUTPUT_BASE = Path(os.getenv("VIDEO_OUT_DIR", "/artifacts/video-output/"))
+OUTPUT_BASE.mkdir(parents=True, exist_ok=True)
 
 @celery_app.task(queue='video_producer', name="ffmpeg_service.produce_video")
 def produce_video(job_id):
-    image_dir = "artifacts/slides/" + job_id
-    audio_dir = "artifacs/tts_output/" + job_id
 
-    output_dir = OUTPUT_DIR / job_id
+    print(f"Received task for job id: {job_id}")
+    image_dir = Path(f"/artifacts/slides/{job_id}")
+    audio_dir = Path(f"/artifacts/tts_output/{job_id}")
+    output_dir = OUTPUT_BASE / job_id
     output_dir.mkdir(parents=True, exist_ok=True)
 
     output_final_dir = output_dir / "outputs"
-    output_final_dir.mkdir(parents=True, exist_ok=True)    
+    output_final_dir.mkdir(parents=True, exist_ok=True)
 
-    bumper_path_in = os.path.abspath("assets/bumpers/bumper_in.mp4")
-    bumper_path_out = os.path.abspath("assets/bumpers/bumper_out.mp4")
-    final_output = Path(output_final_dir + f"{output_name}.mp4")
+    bumper_path_in = Path(f"assets/bumpers/{job_id}-bumper1.mp4").resolve()
+    bumper_path_out = Path(f"assets/bumpers/{job_id}-bumper2.mp4").resolve()
+    final_output = output_final_dir / f"{job_id}.mp4"
 
     def get_audio_duration(audio_path):
         result = subprocess.run(
             ['ffprobe', '-v', 'error', '-show_entries', 'format=duration',
-             '-of', 'default=noprint_wrappers=1:nokey=1', audio_path],
-            stdout=subprocess.PIPE, stderr=subprocess.STDOUT
+             '-of', 'default=noprint_wrappers=1:nokey=1', str(audio_path)],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
         )
-        return float(result.stdout)
+        try:
+            return float(result.stdout.strip())
+        except ValueError:
+            raise RuntimeError(f"Failed to get duration for: {audio_path}")
 
-    images = sorted([f for f in os.listdir(image_dir) if f.endswith(('.png', '.jpg', '.jpeg'))])
-    audios = sorted([f for f in os.listdir(audio_dir) if f.endswith(('.mp3', '.wav'))])
+    images = sorted(image_dir.glob("*.png")) + sorted(image_dir.glob("*.jpg")) + sorted(image_dir.glob("*.jpeg"))
+    audios = sorted(audio_dir.glob("*.mp3")) + sorted(audio_dir.glob("*.wav"))
 
-    for idx, (image, audio) in enumerate(zip(images, audios)):
-        image_path = os.path.join(image_dir, image)
-        audio_path = os.path.join(audio_dir, audio)
-        stereo_path = os.path.join(output_dir, f"stereo_{idx+1:03d}.mp3")
-        output_video = os.path.join(output_dir, f"output_{idx+1:03d}.mp4")
+    if not images or not audios:
+        raise RuntimeError("❌ No matching images or audios found")
 
-        # Convert to stereo MP3
+    for idx, (image, audio) in enumerate(zip(images, audios), 1):
+        print(f"Processing image: {image}, Audio: {audio}")
+        stereo_path = output_dir / f"stereo_{idx:03d}.mp3"
+        output_video = output_dir / f"output_{idx:03d}.mp4"
+
         subprocess.run([
-            'ffmpeg', '-y', '-i', audio_path,
+            'ffmpeg', '-y', '-i', str(audio),
             '-ac', '2', '-ar', '48000', '-b:a', '192k',
-            stereo_path
+            str(stereo_path)
         ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
-        # Use stereo audio for duration and muxing
-        audio_duration = get_audio_duration(stereo_path)
+        duration = get_audio_duration(stereo_path)
 
-        ffmpeg_command = [
-            'ffmpeg', '-y', '-i', image_path,
-            '-i', stereo_path,
+        subprocess.run([
+            'ffmpeg', '-y', '-loop', '1', '-i', str(image),
+            '-i', str(stereo_path),
             '-vf', 'scale=trunc(iw/2)*2:trunc(ih/2)*2',
-            '-c:v', 'libx264', '-tune', 'stillimage',
+            '-c:v', 'libx264', '-tune', 'stillimage', '-shortest',
             '-c:a', 'aac', '-b:a', '192k',
             '-pix_fmt', 'yuv420p', '-movflags', '+faststart',
-            '-t', str(audio_duration),
-            output_video
-        ]
-        subprocess.run(ffmpeg_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            '-t', str(duration), str(output_video)
+        ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
-    filelist_path = os.path.join(output_dir, 'filelist.txt')
-    with open(filelist_path, 'w') as f:
-        if os.path.exists(bumper_path_in):
+    filelist_path = output_dir / 'filelist.txt'
+    with filelist_path.open('w') as f:
+        if bumper_path_in.exists():
             f.write(f"file '{bumper_path_in}'\n")
-        for idx in range(len(images)):
-            part = os.path.abspath(os.path.join(output_dir, f"output_{idx+1:03d}.mp4"))
-            if os.path.exists(part):
-                f.write(f"file '{part}'\n")
-        if os.path.exists(bumper_path_out):
+        for idx in range(1, len(images) + 1):
+            video_path = output_dir / f"output_{idx:03d}.mp4"
+            if video_path.exists():
+                f.write(f"file '{video_path.resolve()}'\n")
+        if bumper_path_out.exists():
             f.write(f"file '{bumper_path_out}'\n")
 
-    concat_command = [
-        'ffmpeg', '-loglevel', 'verbose', '-y', '-f', 'concat', '-safe', '0',
-        '-i', filelist_path, '-c', 'copy', final_output
-    ]
-    subprocess.run(concat_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    subprocess.run([
+        'ffmpeg', '-y', '-f', 'concat', '-safe', '0', '-i', str(filelist_path),
+        '-c', 'copy', str(final_output)
+    ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
-    if os.path.exists(final_output):
+    if final_output.exists():
+        print(f"Final output video written to: {final_output}")
         shutil.rmtree(output_dir, ignore_errors=True)
-        return final_output
+        return str(final_output)
     else:
-        raise RuntimeError("❌ Failed to create final video.")
+        raise RuntimeError("❌ Final video creation failed.")

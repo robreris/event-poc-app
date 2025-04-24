@@ -74,6 +74,8 @@ while ! kubectl get crd rabbitmqclusters.rabbitmq.com >/dev/null 2>&1; do
 done
 echo "RabbitmqCluster CRD ready, proceeding to deploy..."
 
+sleep 30
+
 kubectl apply -f rabbitmq/rabbitmq-cluster.yaml
 
 echo "⏳ Waiting for RabbitMQ LoadBalancer to become ready..."

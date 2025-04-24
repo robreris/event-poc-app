@@ -3,6 +3,16 @@ from fastapi import UploadFile
 
 PPT_PATH = "/artifacts/powerpoints/"
 MD_PATH = "/artifacts/metadata/"
+BUMPER_PATH = "/artifacts/bumpers/"
+
+def save_bumper_to_efs(file: UploadFile, target_filename: str) -> str:
+    os.makedirs(BUMPER_PATH, exist_ok=True)
+    full_path = os.path.join(BUMPER_PATH, target_filename)
+
+    with open(full_path, "wb") as f:
+        f.write(file.file.read())
+    print(f"Bumper saved to {full_path}")
+    return full_path
 
 def save_to_efs(file: UploadFile, file_name: str, mdata: dict[str, any]) -> str:
     os.makedirs(PPT_PATH, exist_ok=True)

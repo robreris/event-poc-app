@@ -1,26 +1,21 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: ppt-extractor-service
+  name: video-producer-service
   namespace: event-poc
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: ppt-extractor
+      app: video-producer
   template:
     metadata:
       labels:
-        app: ppt-extractor
+        app: video-producer
     spec:
       containers:
-      - name: ppt-extractor
-        image: 228122752878.dkr.ecr.us-east-1.amazonaws.com/event-driven-poc-ppt-extractor
-        command: ["/bin/bash", "-c"]
-        args:
-          - |
-            source activate pptx_extractor_env && \
-            celery -A tasks worker --loglevel=info -Q ppt_tasks
+      - name: video-producer
+        image: 228122752878.dkr.ecr.us-east-1.amazonaws.com/event-driven-poc-video-producer
         ports:
         - containerPort: 80
         volumeMounts:

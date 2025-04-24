@@ -69,4 +69,13 @@ def synthesize(input_dir: str, job_id: str) -> str:
                 raise RuntimeError(f"TTS failed for {filename}")
         except Exception as e:
             print(f"[ERROR] failed to synthesize {text_file.name}: {e}")
+    task_name = "ffmpeg_service.produce_video"
+    args = [job_id]
+    result = celery_app.send_task(
+        name=task_name,
+        args=args,
+        queue="video_producer"
+    )
+    result_str = str(result)
+    print(f"Task sent from tts_tasks, result: {result_str}")    
     return audio_files

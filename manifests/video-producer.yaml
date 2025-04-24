@@ -1,26 +1,21 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: tts-processor-service
+  name: video-producer-service
   namespace: event-poc
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: tts-processor
+      app: video-producer
   template:
     metadata:
       labels:
-        app: tts-processor
+        app: video-producer
     spec:
       containers:
-      - name: tts-processor
-        image: 228122752878.dkr.ecr.us-east-1.amazonaws.com/event-driven-poc-tts-processor
-        command: ["/bin/bash", "-c"]
-        args:
-          - |
-            source activate tts_processor_env && \
-            celery -A tts_processor worker --loglevel=info -Q tts_tasks
+      - name: video-producer
+        image: 228122752878.dkr.ecr.us-east-1.amazonaws.com/event-driven-poc-video-producer
         ports:
         - containerPort: 80
         volumeMounts:
@@ -29,16 +24,6 @@ spec:
         env:
         - name: RABBITMQ_HOST
           value: "my-rabbit-nodes.default.svc.cluster.local"
-        - name: SPEECH_KEY
-          valueFrom:
-            secretKeyRef:
-              name: azure-speech-secret
-              key: SPEECH_KEY
-        - name: SPEECH_REGION
-          valueFrom:
-            secretKeyRef:
-              name: azure-speech-secret
-              key: SPEECH_REGION
         - name: RABBIT_USERNAME
           valueFrom:
             secretKeyRef:

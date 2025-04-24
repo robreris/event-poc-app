@@ -1,12 +1,23 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Upload Presentation</title>
+  <title>Upload Presentation & Bumpers</title>
 </head>
 <body>
-  <h2>Upload a PowerPoint</h2>
+  <h2>Upload a PowerPoint and Two MP4 Bumpers</h2>
   <form id="uploadForm" enctype="multipart/form-data">
-    <input type="file" name="file" id="fileInput" accept=".ppt,.pptx" required />
+    <label>PowerPoint:
+      <input type="file" name="ppt" id="pptInput" accept=".ppt,.pptx" required />
+    </label>
+    <br/><br/>
+    <label>Bumper 1:
+      <input type="file" name="bumper1" id="bumper1Input" accept="video/mp4" required />
+    </label>
+    <br/><br/>
+    <label>Bumper 2:
+      <input type="file" name="bumper2" id="bumper2Input" accept="video/mp4" required />
+    </label>
+    <br/><br/>
     <button type="submit">Upload</button>
   </form>
 
@@ -19,9 +30,10 @@
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
 
-      const fileInput = document.getElementById("fileInput");
       const formData = new FormData();
-      formData.append("file", fileInput.files[0]);
+      formData.append("ppt", document.getElementById("pptInput").files[0]);
+      formData.append("bumper1", document.getElementById("bumper1Input").files[0]);
+      formData.append("bumper2", document.getElementById("bumper2Input").files[0]);
 
       try {
         const res = await fetch("/upload", {
