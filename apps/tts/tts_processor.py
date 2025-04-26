@@ -1,4 +1,3 @@
-from config import SPEECH_KEY, SPEECH_REGION, VOICE, OUTPUT_DIR
 import azure.cognitiveservices.speech as speechsdk
 from celery import Celery
 from pathlib import Path
@@ -10,6 +9,11 @@ RABBITMQ_USER = os.environ.get("RABBIT_USERNAME", "guest")
 RABBITMQ_PASS = os.environ.get("RABBIT_PASSWORD", "guest")
 RABBITMQ_PORT = os.environ.get("RABBITMQ_PORT", "5672")
 RABBITMQ_VHOST = os.environ.get("RABBITMQ_VHOST", "/")
+SPEECH_KEY = os.environ.get("SPEECH_KEY", "")
+SPEECH_REGION = os.environ.get("SPEECH_REGION", "canadacentral")
+
+OUTPUT_DIR = Path(os.getenv("TTS_DIR", "/artifacts/tts_output/"))
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 # Full AMQP broker URL
 CELERY_BROKER_URL = (
@@ -23,17 +27,14 @@ celery_app = Celery(
     broker=CELERY_BROKER_URL
 )
 
-OUTPUT_DIR = Path(os.getenv("TTS_DIR", "/artifacts/tts_output/"))
-OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-
 @celery_app.task(queue='tts_tasks', name='tts_processor.synthesize')
-def synthesize(input_dir: str, job_id: str) -> str:
+def synthesize(input_dir: str, job_id: str, voice: str, file_id: str) -> str:
     input_path = Path(input_dir)
     if not input_path.exists() or not input_path.is_dir():
         raise ValueError(f"{input_dir} is not a valid directory")
 
     speech_config = speechsdk.SpeechConfig(subscription=SPEECH_KEY, region=SPEECH_REGION)
-    speech_config.speech_synthesis_voice_name = VOICE
+    speech_config.speech_synthesis_voice_name = voice
     speech_config.set_speech_synthesis_output_format(
         speechsdk.SpeechSynthesisOutputFormat.Audio48Khz192KBitRateMonoMp3
     )
@@ -70,7 +71,7 @@ def synthesize(input_dir: str, job_id: str) -> str:
         except Exception as e:
             print(f"[ERROR] failed to synthesize {text_file.name}: {e}")
     task_name = "ffmpeg_service.produce_video"
-    args = [job_id]
+    args = [job_id, file_id]
     result = celery_app.send_task(
         name=task_name,
         args=args,

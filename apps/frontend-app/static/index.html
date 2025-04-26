@@ -1,27 +1,89 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+  <meta charset="UTF-8">
   <title>Upload Presentation & Bumpers</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background-color: #f0f2f5;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      margin: 0;
+    }
+    .upload-container {
+      background-color: #fff;
+      padding: 30px;
+      border-radius: 12px;
+      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+      width: 400px;
+    }
+    h2 {
+      text-align: center;
+      margin-bottom: 20px;
+    }
+    label {
+      display: block;
+      margin-bottom: 10px;
+      font-weight: bold;
+    }
+    input[type="file"], select {
+      width: 100%;
+      margin-bottom: 20px;
+      padding: 8px;
+      border: 1px solid #ccc;
+      border-radius: 8px;
+    }
+    button {
+      width: 100%;
+      padding: 10px;
+      background-color: #4CAF50;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 16px;
+      cursor: pointer;
+      transition: background-color 0.3s;
+    }
+    button:hover {
+      background-color: #45a049;
+    }
+    #status {
+      margin-top: 20px;
+      text-align: center;
+      font-weight: bold;
+    }
+  </style>
 </head>
 <body>
-  <h2>Upload a PowerPoint and Two MP4 Bumpers</h2>
-  <form id="uploadForm" enctype="multipart/form-data">
-    <label>PowerPoint:
+  <div class="upload-container">
+    <h2>Upload Presentation and Bumpers</h2>
+    <form id="uploadForm" enctype="multipart/form-data">
+      <label for="pptInput">PowerPoint:</label>
       <input type="file" name="ppt" id="pptInput" accept=".ppt,.pptx" required />
-    </label>
-    <br/><br/>
-    <label>Bumper 1:
-      <input type="file" name="bumper1" id="bumper1Input" accept="video/mp4" required />
-    </label>
-    <br/><br/>
-    <label>Bumper 2:
-      <input type="file" name="bumper2" id="bumper2Input" accept="video/mp4" required />
-    </label>
-    <br/><br/>
-    <button type="submit">Upload</button>
-  </form>
 
-  <p id="status"></p>
+      <label for="bumper1Input">Bumper 1 (mp4):</label>
+      <input type="file" name="bumper1" id="bumper1Input" accept="video/mp4" required />
+
+      <label for="bumper2Input">Bumper 2 (mp4):</label>
+      <input type="file" name="bumper2" id="bumper2Input" accept="video/mp4" required />
+
+      <label for="voiceSelect">Select TTS Voice:</label>
+      <select id="voiceSelect" name="voice" required>
+        <option value="" disabled selected>Select a voice</option>
+        <option value="en-US-JennyNeural">Jenny (US)</option>
+        <option value="en-GB-RyanNeural">Ryan (UK)</option>
+        <option value="en-AU-NatashaNeural">Natasha (Australia)</option>
+        <option value="en-IN-NeerjaNeural">Neerja (India)</option>
+      </select>
+
+      <button type="submit">Upload</button>
+    </form>
+
+    <p id="status"></p>
+  </div>
 
   <script>
     const form = document.getElementById("uploadForm");
@@ -34,6 +96,7 @@
       formData.append("ppt", document.getElementById("pptInput").files[0]);
       formData.append("bumper1", document.getElementById("bumper1Input").files[0]);
       formData.append("bumper2", document.getElementById("bumper2Input").files[0]);
+      formData.append("voice", document.getElementById("voiceSelect").value);
 
       try {
         const res = await fetch("/upload", {
@@ -50,6 +113,28 @@
         status.innerText = "❌ Upload failed";
       }
     });
+
+    async function checkDownload(fileId) {
+    try {
+      const res = await fetch(`/check-download/${fileId}`);
+      const data = await res.json();
+
+      if (data.ready) {
+        // 🎬 File is ready, create a download button
+        const downloadButton = document.createElement("a");
+        downloadButton.href = data.download_url;
+        downloadButton.innerText = "🎬 Download Your Video!";
+        downloadButton.className = "download-button";
+        downloadButton.download = "";
+        document.body.appendChild(downloadButton);
+      } else {
+        // ⏳ Not ready yet, try again in 5 seconds
+        setTimeout(() => checkDownload(fileId), 5000);
+      }
+    } catch (err) {
+      console.error("Error checking download status", err);
+    }
+  }
   </script>
 </body>
 </html>

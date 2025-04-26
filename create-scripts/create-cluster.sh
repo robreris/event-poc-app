@@ -107,9 +107,8 @@ kubectl create secret generic my-rabbit-default-user \
   --from-literal=password="$rabbitpassword" \
   -n $app_namespace
 
-echo "Cluster created, ready to build images, push to ECR, and deploy."
+[[ "$?" == "0"]] && echo "Cluster created successfully."
 
-#echo "🚀 Deploying app..."
-#find k8s -type f -name '*.yaml' -exec sed -i "s/namespace:.*/namespace: $cluster_name/" {} +
-#kubectl create -f k8s/pvc.yaml
-#kubectl create -f k8s/deployments/
+echo "RabbitMQ accessible at: $rabbitmqdns"
+echo "RabbitMQ username: $rabbitmqusername"
+echo "RabbitMQ password: $rabbitmqpassword"

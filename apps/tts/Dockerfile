@@ -5,7 +5,7 @@ WORKDIR /app
 
 # Copy environment file and build env
 COPY environment.yml .
-COPY app .
+COPY . .
 
 # Create conda environment
 RUN conda env create -f environment.yml
