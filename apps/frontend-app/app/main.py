@@ -1,6 +1,6 @@
 from fastapi import FastAPI, UploadFile, File, Form
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from app.storage import save_to_efs, save_bumper_to_efs
 from app.rabbitmq import publish_message, rabbitmq_listener
 from app.state import state
@@ -17,8 +17,13 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 async def startup_event():
     asyncio.create_task(rabbitmq_listener())
 
+@app.get("/debug-ready")
+async def debug_ready():
+    return state.ready_downloads
+
 @app.get("/check-download/{file_id}")
 async def check_download(file_id: str):
+    print(f"check-download called for file_id: {file_id}")
     if file_id in state.ready_downloads:
         return JSONResponse(content={"ready": True, "download_url": f"/download/{file_id}"})
     else:

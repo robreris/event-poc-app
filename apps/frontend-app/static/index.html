@@ -13,47 +13,69 @@
       height: 100vh;
       margin: 0;
     }
+    
     .upload-container {
       background-color: #fff;
       padding: 30px;
       border-radius: 12px;
       box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
-      width: 400px;
+      width: 480px; /* was 400px */
     }
+    
     h2 {
       text-align: center;
       margin-bottom: 20px;
     }
+    
     label {
       display: block;
-      margin-bottom: 10px;
+      margin-bottom: 6px;
       font-weight: bold;
     }
+    
     input[type="file"], select {
       width: 100%;
+      padding: 10px;
       margin-bottom: 20px;
-      padding: 8px;
       border: 1px solid #ccc;
       border-radius: 8px;
+      font-size: 14px;
+      box-sizing: border-box;
     }
-    button {
+    
+    button, .download-button {
+      display: block;
       width: 100%;
-      padding: 10px;
+      padding: 12px;
       background-color: #4CAF50;
       color: white;
+      font-size: 16px;
+      font-weight: bold;
       border: none;
       border-radius: 8px;
-      font-size: 16px;
       cursor: pointer;
-      transition: background-color 0.3s;
+      text-align: center;
+      text-decoration: none;
+      transition: background-color 0.3s, transform 0.2s;
+      box-sizing: border-box;
     }
-    button:hover {
+    
+    button:hover, .download-button:hover {
       background-color: #45a049;
+      transform: scale(1.02);
     }
+    
+    .download-button {
+      margin-top: 20px;
+    }
+    
+    @keyframes fadeIn {
+      to { opacity: 1; }
+    }
+    
     #status {
       margin-top: 20px;
       text-align: center;
-      font-weight: bold;
     }
   </style>
 </head>
@@ -82,7 +104,7 @@
       <button type="submit">Upload</button>
     </form>
 
-    <p id="status"></p>
+    <div id="status" style="text-align: center; margin-top: 20px;"></div>
   </div>
 
   <script>
@@ -108,6 +130,8 @@
 
         const data = await res.json();
         status.innerText = `✅ Uploaded! File ID: ${data.file_id}`;
+        localStorage.setItem("lastFileId", data.file_id);
+        checkDownload(data.file_id);
       } catch (err) {
         console.error(err);
         status.innerText = "❌ Upload failed";
@@ -118,6 +142,7 @@
     try {
       const res = await fetch(`/check-download/${fileId}`);
       const data = await res.json();
+      console.log("Polling result:", data);
 
       if (data.ready) {
         // 🎬 File is ready, create a download button
@@ -126,7 +151,10 @@
         downloadButton.innerText = "🎬 Download Your Video!";
         downloadButton.className = "download-button";
         downloadButton.download = "";
-        document.body.appendChild(downloadButton);
+
+        const status = document.getElementById("status");
+        status.innerHTML = "";  // Clear previous text (file ID)
+        status.appendChild(downloadButton);
       } else {
         // ⏳ Not ready yet, try again in 5 seconds
         setTimeout(() => checkDownload(fileId), 5000);
@@ -135,6 +163,13 @@
       console.error("Error checking download status", err);
     }
   }
+
+  window.addEventListener("DOMContentLoaded", () => {
+    const fileId = localStorage.getItem("lastFileId");
+    if (fileId) {
+      checkDownload(fileId);
+    }
+  });
   </script>
 </body>
 </html>

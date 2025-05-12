@@ -39,17 +39,25 @@ def publish_message(data: dict):
     print(f"Task {result.id} published to queue 'ppt_tasks'.")
 
 async def rabbitmq_listener():
-    connection = await aio_pika.connect_robust(CELERY_BROKER_URL)
-    channel = await connection.channel()
-    queue = await channel.declare_queue("download_ready", durable=True)
+    print("Starting RabbitMQ listener...")
+    try:
+        connection = await aio_pika.connect_robust(CELERY_BROKER_URL)
+        channel = await connection.channel()
+        queue = await channel.declare_queue("download_ready", durable=True)
 
-    async with queue.iterator() as queue_iter:
-        async for message in queue_iter:
-            async with message.process():
-                data = json.loads(message.body)
-                print(f"Received download-ready message: {data}")
-                if data["event"] == "artifact-ready":
-                    file_path = data["file_path"]
-                    file_id = data["file_id"]
-                    state.ready_downloads[file_id] = file_path
-                    print(f"Video from job with id {job_id} associated with file id {file_id} ready at {file_path}")
+        async with queue.iterator() as queue_iter:
+            async for message in queue_iter:
+                async with message.process():
+                    try:
+                        data = json.loads(message.body)
+                        print(f"Received download-ready message: {data}")
+                        if data["event"] == "artifact-ready":
+                            file_path = data["file_path"]
+                            file_id = data["file_id"]
+                            job_id = data["job_id"]
+                            state.ready_downloads[file_id] = file_path
+                            print(f"Video from job with id {job_id} associated with file id {file_id} ready at {file_path}")
+                    except Exception as inner:
+                        print(f"Error handling message: {inner}") 
+    except Exception as outer:
+        print(f"Failed to connect or consume RabbitMQ: {outer}")

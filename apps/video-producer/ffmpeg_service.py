@@ -3,7 +3,7 @@ import subprocess
 import shutil
 from celery import Celery
 from pathlib import Path
-import asyncio, aio_pika
+import asyncio, aio_pika, traceback, json
 
 # Environment-based configuration
 RABBITMQ_HOST = os.getenv("RABBITMQ_HOST", "rabbitmq")
@@ -147,36 +147,43 @@ def produce_video(job_id, file_id):
 
 
     async def send_download_ready_message(file_path, job_id, file_id):
-        connection = await aio_pika.connect_robust(CELERY_BROKER_URL)
-        channel = await connection.channel()
-        await channel.declare_queue("download_ready", durable=True)
-        message = {
-            "event": "artifact-ready",
-            "file_path": file_path,
-            "job_id": job_id,
-            "file_id": file_id
-        }
-        await channel.default_exchange.publish(
-            aio_pika.Message(
-                body=json.dumps(message).encode(),
-                delivery_mode=aio_pika.DeliveryMode.PERSISTENT
-            ),
-            routing_key="download_ready"
-        )
-        await connection.close()
-
+        try:
+            connection = await aio_pika.connect_robust(CELERY_BROKER_URL)
+            channel = await connection.channel()
+            await channel.declare_queue("download_ready", durable=True)
+            message = {
+                "event": "artifact-ready",
+                "file_path": str(file_path),
+                "job_id": job_id,
+                "file_id": file_id
+            }
+            await channel.default_exchange.publish(
+                aio_pika.Message(
+                    body=json.dumps(message).encode(),
+                    delivery_mode=aio_pika.DeliveryMode.PERSISTENT
+                ),
+                routing_key="download_ready"
+            )
+            await connection.close()
+            print(f"Sent 'artifact-ready' message to 'download_ready' queue: {message}")
+        except Exception as e:
+            print("Failed to send artifact-ready message")
+            traceback.print_exc()
 
     if final_output.exists():
         print(f"✅ Final output video written to: {final_output}")
         shutil.rmtree(temp_dir, ignore_errors=True)
         shutil.rmtree(temp_adj_dir, ignore_errors=True)
-        return str(final_output)
- 
+
+        print(f"Calling send_download_ready_message with file_id: {file_id}") 
         asyncio.run(send_download_ready_message(
             file_path=final_output,
             job_id=job_id,
             file_id=file_id
         ))
+        print("Message send attempted.")
+        
+        return str(final_output)
     else:
         raise RuntimeError("❌ Final video creation failed.")
 
