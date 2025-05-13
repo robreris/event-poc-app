@@ -107,8 +107,8 @@ kubectl create secret generic my-rabbit-default-user \
   --from-literal=password="$rabbitpassword" \
   -n $app_namespace
 
-[[ "$?" == "0"]] && echo "Cluster created successfully."
+[[ "$?" == "0" ]] && echo "Cluster created successfully."
 
 echo "RabbitMQ accessible at: $rabbitmqdns"
-echo "RabbitMQ username: $rabbitmqusername"
-echo "RabbitMQ password: $rabbitmqpassword"
+echo "RabbitMQ username: $rabbitusername"
+echo "RabbitMQ password: $rabbitpassword"
