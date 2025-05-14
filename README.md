@@ -1,151 +1,77 @@
-## Basic RabbitMQ Cluster Set-Up
+## Video-As-Code POC/MVP Set-Up in EKS
 
-### Create cluster
+### Create EKS cluster, RabbitMQ deployment, and VAC resources
 
-You can use the script at ./create-scripts/create-cluster.sh to deploy, or proceed with the following steps.
+First, update info for your environment and as desired in **create-scripts/create-cluster.sh**:
 
-```bash
-AWS_ACCT=<your AWS Account number>
-AWS_DEFAULT_REGION=us-east-1
+```
+...
+AWS_ACCT="12345678"  # Enter your account number here
 cluster_name="event-driven-poc"
 app_namespace="event-poc"
-
-sed -i "/^metadata:/,/^[^[:space:]]/s/^\([[:space:]]*name:[[:space:]]*\).*/\1$cluster_name/" eks/event-poc-cluster.yaml
-eksctl create cluster -f eks/event-poc-cluster.yaml
+export AWS_DEFAULT_REGION=us-east-1
+...
 ```
 
-Set up the EFS CSI Driver Add-on
+Do the same in **create-scripts/create-event-poc.sh**:
+```
+...
+export AWS_DEFAULT_REGION=us-east-1
+
+app_namespace=event-poc
+...
+```
+
+Then go ahead and deploy:
+
 ```bash
-role_name=AmazonEKS_EFS_CSI_DriverRole
+./create-scripts/create-cluster.sh
 
-eksctl utils associate-iam-oidc-provider \
-  --cluster $cluster_name \
-  --approve
+./create-scripts/create-event-poc.sh
 
-eksctl create iamserviceaccount  \
-  --name efs-csi-controller-sa   \
-  --namespace kube-system   \
-  --cluster $cluster_name  \
-  --role-name $role_name  \
-  --role-only   \
-  --attach-policy-arn arn:aws:iam::aws:policy/service-role/AmazonEFSCSIDriverPolicy  \
-  --approve
-
-TRUST_POLICY=$(aws iam get-role --output json --role-name $role_name --query 'Role.AssumeRolePolicyDocument' | \
-    sed -e 's/efs-csi-controller-sa/efs-csi-*/' -e 's/StringEquals/StringLike/')
-
-aws iam update-assume-role-policy --role-name $role_name --policy-document "$TRUST_POLICY"
-
-eksctl create addon --cluster event-driven-poc --name aws-efs-csi-driver --version latest --service-account-role-arn arn:aws:iam::$AWS_ACCT:role/AmazonEKS_EFS_CSI_DriverRole --force
+kubectl create -f manifests/
 ```
 
-Set up EFS
+Website will be at:
 ```bash
-sed -i "s/CLUSTER_NAME=.*/CLUSTER_NAME=\"$cluster_name\"/" eks/efs/create-efs.sh
-./eks/efs/create-efs.sh
-```
-**Ensure EFS mount security groups have been configured to allow NFS (port 2049) access from the security group attached to cluster EC2 instances**
-
-Update the EFS storage class object spec with new file system id and deploy
-```bash
-EFS_ID=$(aws efs describe-file-systems \
-  --query "FileSystems[?Tags[?Key=='Name' && Value=='$cluster_name-efs']].FileSystemId" \
-  --output text)
-
-sed -i "s/fileSystemId: .*/fileSystemId: $EFS_ID/" eks/efs/efs-sc.yaml
-
-kubectl create -f eks/efs/efs-sc.yaml
+kubectl get svc ppt-upload-service -n event-poc -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'
 ```
 
-Set up RabbitMQ K8S Operator
-```bash
-kubectl create namespace rabbitmq-system
-helm repo add bitnami https://charts.bitnami.com/bitnami
-helm repo update
-helm install rabbitmq-operator bitnami/rabbitmq-cluster-operator --namespace rabbitmq-system
-```
-
-Deploy RabbitMQ cluster and get creds for console access
-```bash
-kubectl apply -f rabbitmq/rabbitmq-cluster.yaml
-
-# Get console DNS
-rabbitmqdns="http://$(kubectl get svc my-rabbit -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'):15672"
-echo $rabbitmqdns    # paste into browser
-
-# Get credentials for log in
-rabbitusername=$(kubectl get secret my-rabbit-default-user -o jsonpath="{.data.username}" | base64 --decode; echo)
-rabbitpassword=$(kubectl get secret my-rabbit-default-user -o jsonpath="{.data.password}" | base64 --decode; echo)
-
-# Copy secrets to app namespace
-kubectl create secret generic my-rabbit-default-user \
-  --from-literal=username=$rabbitusername \
-  --from-literal=password=$rabbitpassword \
-  -n $app_namespace
-```
-
-Build the images and push to ECR, then deploy.
-
-### Simple Testing POC
-
-Create namespace, update deployments and pvc specs, and deploy
-```bash
-kubectl create namespace $app_namespace
-find eks/deployments -type f -name '*.yaml' -exec sed -i "s/namespace:.*/namespace: $cluster_name/" {} +
-kubectl create -f eks/deployments/
-```
-
-Logging and troubleshooting:
+#### Logging and troubleshooting:
 
 ```bash
 # Check logs
-kubectl logs -l app=coordinator -n event-poc
-kubectl logs -l app=tts -n event-poc
-kubectl logs -l app=renderer -n event-poc
-kubectl logs -l job-name=producer -n event-poc
+kubectl logs -l app=ppt-upload -n event-poc
+kubectl logs -l app=ppt-extractor -n event-poc
+kubectl logs -l app=tts-processor -n event-poc
+kubectl logs -l app=video-producer -n event-poc
 ```
 
 SSH into Pod containers for troubleshooting:
 ```bash
-kubectl exec -it $(kubectl get pod -l app=coordinator -n event-poc -o jsonpath="{.items[0].metadata.name}") -n event-poc -- sh
-kubectl exec -it $(kubectl get pod -l app=renderer -n event-poc -o jsonpath="{.items[0].metadata.name}") -n event-poc -- sh
-kubectl exec -it $(kubectl get pod -l app=tts -n event-poc -o jsonpath="{.items[0].metadata.name}") -n event-poc -- sh
-kubectl exec -it $(kubectl get pod -l job-name=producer -n event-poc -o jsonpath="{.items[0].metadata.name}") -n event-poc -- sh
+kubectl exec -it $(kubectl get pod -l app=ppt-upload -n event-poc -o jsonpath="{.items[0].metadata.name}") -n event-poc -- sh
+kubectl exec -it $(kubectl get pod -l app=ppt-extractor -n event-poc -o jsonpath="{.items[0].metadata.name}") -n event-poc -- sh
+kubectl exec -it $(kubectl get pod -l app=tts-processor -n event-poc -o jsonpath="{.items[0].metadata.name}") -n event-poc -- sh
+kubectl exec -it $(kubectl get pod -l app=video-producer -n event-poc -o jsonpath="{.items[0].metadata.name}") -n event-poc -- sh
+
+# After SSH'ing in:
+
+> ls /artifacts
+#notes  slides  tts_output  video-output
+
 ```
 
-### Powerpoint Extractor/TTS POC
+#### Cluster Teardown
 
-See apps/tts/README.md for info on setting up AWS Secrets Manager secret integration (for Azure TTS settings). 
-
-To deploy cluster:
+First, as with the create scripts, update the region and namespace in **create-scripts/delete-cluster-and-poc.sh**:
 
 ```bash
-kubectl create -f eks/shared-artifacts-pvc.yaml
-kubectl deploy -f apps/frontend-app/manifests/
-kubectl deploy -f apps/pptx-extractor/manifests/
-kubectl deploy -f apps/tts/manifests/
+AWS_DEFAULT_REGION=us-east-1
+app_namespace=event-poc
 ```
 
-Get Powerpoint upload URL (access in a browser via http):
+Then run the script to tear down:
 
 ```bash
-kubectl get svc ppt-upload-service -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' -n event-poc
-```
-
-Cluster teardown:
-```bash
-kubectl delete -f eks/deployments/
-
-kubectl delete -f rabbitmq/rabbitmq-cluster.yaml
-
-aws cloudformation delete-stack --stack-name $cluster_name-efs
-
-eksctl delete iamserviceaccount --name efs-csi-controller-sa --cluster $cluster_name
-
-eksctl delete addon --cluster $cluster_name --name aws-efs-csi-driver
-
-aws cloudformation delete-stack --stack-name eksctl-$cluster_name-addon-iamserviceaccount-event-poc-eso-sa
-aws cloudformation delete-stack --stack-name eksctl-$cluster_name-addon-iamserviceaccount-kube-system-efs-csi-controller-sa
-
-eksctl delete cluster $cluster_name
+./create-scripts/delete-cluster-and-poc.sh
 ```
