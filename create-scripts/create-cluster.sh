@@ -10,7 +10,7 @@ echo "🔧 Creating EKS cluster: "$cluster_name
 sed -i "/^metadata:/,/^[^[:space:]]/s/^\([[:space:]]*name:[[:space:]]*\).*/\1$cluster_name/" eks/event-poc-cluster.yaml
 eksctl create cluster -f eks/event-poc-cluster.yaml
 
-role_name="AmazonEKS_EFS_CSI_DriverRole"
+role_name="AmazonEKS_EFS_CSI_DriverRole-$cluster_name"
 
 echo "🔐 Associating IAM OIDC provider..."
 eksctl utils associate-iam-oidc-provider \
@@ -19,7 +19,7 @@ eksctl utils associate-iam-oidc-provider \
 
 echo "🔐 Creating IAM service account (role only)..."
 eksctl create iamserviceaccount  \
-  --name efs-csi-controller-sa   \
+  --name efs-csi-controller-sa-$cluster_name   \
   --namespace kube-system   \
   --cluster "$cluster_name"  \
   --role-name "$role_name"  \
@@ -61,6 +61,46 @@ echo "📄 Patching StorageClass with EFS ID: $EFS_ID"
 sed -i "s/fileSystemId: .*/fileSystemId: $EFS_ID/" eks/efs/efs-sc.yaml
 kubectl create -f eks/efs/efs-sc.yaml
 
+exit 0
+
+##ALB Ingress controller policy
+# If you've created the policy previously
+ALBIC_POLICY_ARN=$(aws iam list-policies \
+  --query "Policies[?PolicyName=='AWSLoadBalancerControllerPolicy'].Arn" \
+  --output text)
+
+# If you haven't...
+if [ -z $MY_POLICY_ARN ]; then
+  ALBIC_POLICY_ARN=$(aws iam create-policy \
+    --policy-name AWSLoadBalancerControllerPolicy \
+    --policy-document file://./iam/alb-ingress-controller-policy.json | jq -r .Policy.Arn)
+fi
+
+eksctl create iamserviceaccount  \
+  --cluster=$cluster_name  \
+  --namespace=kube-system  \
+  --name=aws-load-balancer-controller  \
+  --role-name=AmazonEKSLoadBalancerControllerRole  \
+  --attach-policy-arn=$ALBIC_POLICY_ARN  \
+  --approve  \
+  --region $AWS_DEFAULT_REGION
+
+helm repo add eks https://aws.github.io/eks-charts
+helm repo update eks
+
+export K8S_VPC=$(eksctl get cluster $cluster_name -o json | jq -r '.[0].ResourcesVpcConfig.VpcId')
+
+helm install aws-load-balancer-controller eks/aws-load-balancer-controller  \
+  -n kube-system  \
+  --set clusterName=$cluster_name  \
+  --set serviceAccount.create=false  \
+  --set serviceAccount.name=aws-load-balancer-controller  \
+  --set region=$AWS_DEFAULT_REGION  \
+  --set vpcId=$K8S_VPC
+
+# Wait for deployment to complete...
+kubectl rollout status deployment/aws-load-balancer-controller -n kube-system
+
 echo "📡 Installing RabbitMQ Operator..."
 kubectl create namespace rabbitmq-system
 helm repo add bitnami https://charts.bitnami.com/bitnami
@@ -74,7 +114,15 @@ while ! kubectl get crd rabbitmqclusters.rabbitmq.com >/dev/null 2>&1; do
 done
 echo "RabbitmqCluster CRD ready, proceeding to deploy..."
 
-sleep 30
+sleep 10
+
+#Create rabbitmq self-signed certs
+openssl req -x509 -nodes -days 365 -newkey rsa:2048 -keyout tls.key -out tls.crt -subj "/CN=my-rabbit"
+kubectl create secret generic my-rabbitmq-server-certificate \
+   --from-file=ca.crt=certs/tls.crt \
+   --from-file=tls.crt=certs/tls.crt \
+   --from-file=tls.key=certs/tls.key \
+   -n default
 
 kubectl apply -f rabbitmq/rabbitmq-cluster.yaml
 

@@ -67,5 +67,5 @@ Outputs:
   FileSystemId:
     Value: !Ref EfsFileSystem
     Export:
-      Name: EfsFileSystemId
+      Name: !Sub EfsFileSystemId-${AWS::StackName}
 

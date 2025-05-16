@@ -15,7 +15,7 @@ availabilityZones:
 
 managedNodeGroups:
   - name: ng-main
-    instanceType: t3.large
+    instanceType: c7i.4xlarge
     desiredCapacity: 3
     minSize: 2
     maxSize: 5

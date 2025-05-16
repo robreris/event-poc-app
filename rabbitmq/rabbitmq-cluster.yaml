@@ -5,6 +5,9 @@ metadata:
   namespace: default
 spec:
   replicas: 2
+  tls:
+    secretName: my-rabbitmq-server-certificate
+    caSecretName: my-rabbitmq-server-certificate
   service:
     type: LoadBalancer
   persistence:

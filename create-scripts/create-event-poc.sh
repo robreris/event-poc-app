@@ -1,9 +1,11 @@
 #!/bin/bash
 set -euo pipefail
 
-AWS_DEFAULT_REGION=us-east-1
+export AWS_DEFAULT_REGION=us-east-1
+
 app_namespace=event-poc
-cluster_name=$(eksctl get cluster -o json | jq -r ".[0].Name")
+cluster_name=event-driven-poc
+#cluster_name=$(eksctl get cluster -o json | jq -r ".[0].Name")
 
 kubectl create -f eks/shared-artifacts-pvc.yaml
 
@@ -29,12 +31,19 @@ if [ -z $MY_POLICY_ARN ]; then
 fi
 
 eksctl create iamserviceaccount \
-  --name eso-sa \
+  --name eso-sa-$cluster_name \
   --namespace $app_namespace \
   --cluster $cluster_name \
   --attach-policy-arn $MY_POLICY_ARN  \
   --approve \
   --role-name ESOSecretsAccessRole
+
+until kubectl get crd externalsecrets.external-secrets.io &> /dev/null; do
+  echo "Waiting for ExternalSecret CRD to be created..."
+  sleep 2
+done
+
+
 
 echo "Ready to build and push docker images.\n"
 echo "Run 'kubectl create -f /manifests' to start deployments."
