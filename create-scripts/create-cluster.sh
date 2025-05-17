@@ -28,10 +28,32 @@ eksctl create iamserviceaccount  \
   --approve
 
 echo "🔄 Updating trust policy..."
-TRUST_POLICY=$(aws iam get-role --output json --role-name "$role_name" --query 'Role.AssumeRolePolicyDocument' | \
-    sed -e 's/efs-csi-controller-sa/efs-csi-*/' -e 's/StringEquals/StringLike/')
+OIDC_ISSUER=$(aws eks describe-cluster --name "$cluster_name" --query "cluster.identity.oidc.issuer" --output text | sed -e "s/^https:\/\///")
 
-aws iam update-assume-role-policy --role-name "$role_name" --policy-document "$TRUST_POLICY"
+cat > iam/efs-csi-trust-policy.json <<EOF
+{
+   "Version": "2012-10-17",
+   "Statement": [
+     {
+       "Effect": "Allow",
+       "Principal": {
+         "Federated":
+"arn:aws:iam::${AWS_ACCT_ID}:oidc-provider/${OIDC_ISSUER}"
+       },
+       "Action": "sts:AssumeRoleWithWebIdentity",
+       "Condition": {
+         "StringLike": {
+           "${OIDC_ISSUER}:sub":
+"system:serviceaccount:kube-system:efs-csi-controller-sa*",
+           "${OIDC_ISSUER}:aud": "sts.amazonaws.com" 
+         }
+       }
+     }
+   ]
+}
+EOF
+
+aws iam update-assume-role-policy --role-name "$role_name" --policy-document file://./iam/efs-csi-trust-policy.json
 
 echo "📦 Installing EFS CSI driver add-on..."
 eksctl create addon \
@@ -60,8 +82,6 @@ done
 echo "📄 Patching StorageClass with EFS ID: $EFS_ID"
 sed -i "s/fileSystemId: .*/fileSystemId: $EFS_ID/" eks/efs/efs-sc.yaml
 kubectl create -f eks/efs/efs-sc.yaml
-
-exit 0
 
 ##ALB Ingress controller policy
 # If you've created the policy previously
