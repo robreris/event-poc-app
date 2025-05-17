@@ -1,2 +1,4 @@
 .kuberlr
 */.kuberlr/*
+certs
+iam/efs-csi-trust-policy.json

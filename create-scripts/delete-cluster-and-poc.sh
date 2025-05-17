@@ -16,7 +16,7 @@ eksctl delete iamserviceaccount --name efs-csi-controller-sa-$cluster_name --clu
 eksctl delete addon --cluster $cluster_name --name aws-efs-csi-driver
 
 aws cloudformation delete-stack --stack-name eksctl-$cluster_name-addon-iamserviceaccount-event-poc-eso-sa
-aws cloudformation delete-stack --stack-name eksctl-$cluster_name-addon-iamserviceaccount-kube-system-efs-csi-controller-sa
+aws cloudformation delete-stack --stack-name eksctl-$cluster_name-addon-iamserviceaccount-kube-system-efs-csi-controller-sa-$cluster_name
 aws cloudformation delete-stack --stack-name eksctl-$cluster_name-addon-iamserviceaccount-kube-system-aws-load-balancer-controller
 
 

@@ -38,7 +38,7 @@ cat > iam/efs-csi-trust-policy.json <<EOF
        "Effect": "Allow",
        "Principal": {
          "Federated":
-"arn:aws:iam::${AWS_ACCT_ID}:oidc-provider/${OIDC_ISSUER}"
+"arn:aws:iam::${AWS_ACCT}:oidc-provider/${OIDC_ISSUER}"
        },
        "Action": "sts:AssumeRoleWithWebIdentity",
        "Condition": {
