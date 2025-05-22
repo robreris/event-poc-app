@@ -13,21 +13,10 @@ export AWS_DEFAULT_REGION=us-east-1
 ...
 ```
 
-Do the same in **create-scripts/create-event-poc.sh**:
-```
-...
-export AWS_DEFAULT_REGION=us-east-1
-
-app_namespace=event-poc
-...
-```
-
 Then go ahead and deploy:
 
 ```bash
 ./create-scripts/create-cluster.sh
-
-./create-scripts/create-event-poc.sh
 
 kubectl create -f manifests/
 ```

@@ -1,0 +1,23 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: efs-csi-controller-sa
+  namespace: event-poc
+  annotations:
+    eks.amazonaws.com/role-arn: arn:aws:iam::228122752878:role/event-driven-poc-efs-csi-driver
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: eso-sa
+  namespace: event-poc
+  annotations:
+    eks.amazonaws.com/role-arn: arn:aws:iam::228122752878:role/event-driven-poc-external-secrets
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: aws-alb-ingress-controller
+  namespace: event-poc
+  annotations:
+    eks.amazonaws.com/role-arn: arn:aws:iam::228122752878:role/event-driven-poc-alb-ingress

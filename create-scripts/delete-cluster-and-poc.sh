@@ -11,13 +11,6 @@ kubectl delete -f rabbitmq/rabbitmq-cluster.yaml
 
 aws cloudformation delete-stack --stack-name $cluster_name-efs
 
-eksctl delete iamserviceaccount --name efs-csi-controller-sa-$cluster_name --cluster $cluster_name
-
-eksctl delete addon --cluster $cluster_name --name aws-efs-csi-driver
-
-aws cloudformation delete-stack --stack-name eksctl-$cluster_name-addon-iamserviceaccount-event-poc-eso-sa
-aws cloudformation delete-stack --stack-name eksctl-$cluster_name-addon-iamserviceaccount-kube-system-efs-csi-controller-sa-$cluster_name
-aws cloudformation delete-stack --stack-name eksctl-$cluster_name-addon-iamserviceaccount-kube-system-aws-load-balancer-controller
-
+aws cloudformation delete-stack --stack-name eks-addon-roles
 
 eksctl delete cluster $cluster_name
