@@ -78,7 +78,7 @@ Resources:
                   - secretsmanager:DescribeSecret
                   - secretsmanager:GetResourcePolicy
                   - secretsmanager:ListSecretVersionIds
-                Resource: !Sub "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:dev/${Namespace}/azure_speech_vars*"
+                Resource: !Sub "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:dev/event_poc/azure_speech_vars*"
 
   # ALB Ingress Controller Role
   ALBIngressRole:

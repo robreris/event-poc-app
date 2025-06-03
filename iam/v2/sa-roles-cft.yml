@@ -10,10 +10,45 @@ Parameters:
     Description: ID of OIDC provider
   Namespace:
     Type: String
-    Description: ESO namespace
+    Description: App namespace
 
 Resources:
 
+  ACKSSMRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${ClusterName}-ack-ssm-controller"
+      AssumeRolePolicyDocument:
+        Fn::Sub: |
+          {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Principal": {
+                  "Federated": "arn:aws:iam::${AWS::AccountId}:oidc-provider/oidc.eks.${AWS::Region}.amazonaws.com/id/${OIDCId}"
+                },
+                "Action": "sts:AssumeRoleWithWebIdentity",
+                "Condition": {
+                  "StringLike": {
+                    "oidc.eks.${AWS::Region}.amazonaws.com/id/${OIDCId}:sub": "system:serviceaccount:${Namespace}:aws-ack-ssm-controller*",
+                    "oidc.eks.${AWS::Region}.amazonaws.com/id/${OIDCId}:aud": "sts.amazonaws.com"
+                  }
+                }
+              }
+            ]
+          }
+      Policies:
+        - PolicyName: SSMAccess
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: 
+                  - ssm:PutParameter
+                  - ssm:DeleteParameter
+                  - ssm:GetParameter
+                Resource: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter:dev/${Namespace}/*"
   # EFS CSI Driver Role
   EFSCSIRole:
     Type: AWS::IAM::Role
@@ -78,7 +113,7 @@ Resources:
                   - secretsmanager:DescribeSecret
                   - secretsmanager:GetResourcePolicy
                   - secretsmanager:ListSecretVersionIds
-                Resource: !Sub "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:dev/${Namespace}/azure_speech_vars*"
+                Resource: !Sub "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:dev/event_poc/azure_speech_vars*"
 
   # ALB Ingress Controller Role
   ALBIngressRole:
@@ -294,3 +329,5 @@ Outputs:
     Value: !GetAtt ESORole.Arn
   ALBIngressRoleArn:
     Value: !GetAtt ALBIngressRole.Arn
+  ACKSSMRoleArn:
+    value: !GetAtt ACKSSMRole.Arn

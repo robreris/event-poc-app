@@ -21,3 +21,11 @@ metadata:
   namespace: event-poc
   annotations:
     eks.amazonaws.com/role-arn: arn:aws:iam::228122752878:role/event-driven-poc-alb-ingress
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: aws-ack-ssm-controller
+  namespace: event-poc
+  annotations:
+    eks.amazonaws.com/role-arn: arn:aws:iam::228122752878:role/event-driven-poc-ssm-controller

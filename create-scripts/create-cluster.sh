@@ -64,15 +64,26 @@ for i in {1..30}; do
   sleep 10
 done
 
+for i in {1..30}; do
+  ACKSSMrole=$(aws cloudformation describe-stacks --stack-name eks-addon-roles --query "Stacks[0].Outputs[?OutputKey=='ACKSSMRoleArn'].OutputValue" --output text)
+  if [[ -n "$ACKSSMrole" ]] || [[ "$VERS" == "v1" ]]; then
+    break
+  fi
+  echo "🔄 Waiting for ESOrole... ($i/30)"
+  sleep 10
+done
+
 echo "Created roles: "
 echo $EFSCSIrole
 echo $ESOrole
 echo $ALBIngressrole
+echo $ACKSSMrole || true
 
 sed -i "s/^\(\s*namespace:\s*\).*/\1${app_namespace}/" eks/${VERS}/service-accounts/sa.yml
 sed -i "/name: efs-csi-controller-sa/,/eks.amazonaws.com\/role-arn:/ s#^\([[:space:]]*eks.amazonaws.com/role-arn:\).*#\1 $EFSCSIrole#" eks/${VERS}/service-accounts/sa.yml
 sed -i "/name: eso-sa/,/eks.amazonaws.com\/role-arn:/ s#^\([[:space:]]*eks.amazonaws.com/role-arn:\).*#\1 $ESOrole#" eks/${VERS}/service-accounts/sa.yml
 sed -i "/name: aws-alb-ingress-controller/,/eks.amazonaws.com\/role-arn:/ s#^\([[:space:]]*eks.amazonaws.com/role-arn:\).*#\1 $ALBIngressrole#" eks/${VERS}/service-accounts/sa.yml
+sed -i "/name: aws-ack-ssm-controller/,/eks.amazonaws.com\/role-arn:/ s#^\([[:space:]]*eks.amazonaws.com/role-arn:\).*#\1 $ACKSSMrole#" eks/${VERS}/service-accounts/sa.yml || true   # if running v1
 kubectl create -f eks/${VERS}/service-accounts/sa.yml
 
 echo "📦 Installing EFS CSI driver add-on..."
@@ -104,6 +115,15 @@ done
 echo "📄 Patching StorageClass with EFS ID: $EFS_ID"
 sed -i "s/fileSystemId: .*/fileSystemId: $EFS_ID/" eks/${VERS}/efs/efs-sc.yaml
 kubectl create -f eks/${VERS}/efs/efs-sc.yaml
+
+echo "Setting up ACK (AWS Controllers for Kubernetes)..."
+helm repo add ack https://aws.github.io/eks-charts
+helm upgrade --install ack-ssm-controller ack/aws-controller \
+  --namespace $app_namespace \
+  --set aws.region=$AWS_DEFAULT_REGION \
+  --set service=ssm \
+  --set controller.serviceAccount.create=false \
+  --set controller.serviceAccount.name=ack-ssm-controller
 
 echo "Setting up external secrets operator...."
 helm repo add external-secrets https://charts.external-secrets.io
