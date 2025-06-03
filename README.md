@@ -16,9 +16,9 @@ export AWS_DEFAULT_REGION=us-east-1
 Then go ahead and deploy:
 
 ```bash
-./create-scripts/create-cluster.sh
+./create-scripts/create-cluster.sh v1     #v1 is current working version; v2 is for testing/implementing new features
 
-kubectl create -f manifests/
+kubectl create -f manifests/v1/
 ```
 
 Website will be at:
@@ -62,5 +62,5 @@ app_namespace=event-poc
 Then run the script to tear down:
 
 ```bash
-./create-scripts/delete-cluster-and-poc.sh
+./create-scripts/delete-cluster-and-poc.sh v1
 ```

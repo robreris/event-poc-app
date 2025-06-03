@@ -1,0 +1,22 @@
+[
+  {
+    "ParameterKey": "VpcId",
+    "ParameterValue": "vpc-04d26c0077d678158"
+  },
+  {
+    "ParameterKey": "SubnetIdAz1",
+    "ParameterValue": "subnet-08f462c74d0d02ca7"
+  },
+  {
+    "ParameterKey": "SubnetIdAz2",
+    "ParameterValue": "subnet-096531404c48f47f8"
+  },
+  {
+    "ParameterKey": "NodeSecurityGroup",
+    "ParameterValue": "sg-070b99fa12cb29b96"
+  },
+  {
+    "ParameterKey": "EfsName",
+    "ParameterValue": "event-driven-poc-efs"
+  }  
+]

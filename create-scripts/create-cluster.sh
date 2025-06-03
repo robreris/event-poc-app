@@ -9,14 +9,24 @@ app_namespace="event-poc"
 export AWS_DEFAULT_REGION=us-east-1
 ###############################################################
 
-eksctl create cluster -f eks/event-poc-cluster.yaml
+VERS=$1
+
+if [ $# -eq 0 ] || [ $# -gt 1 ]; then
+  echo "Zero or too many arguments supplied..."
+  echo "Example: ./create-scripts/create-cluster.sh v1"
+  exit 1
+fi
+
+echo "Launching $VERS setup...."
+
+eksctl create cluster -f eks/${VERS}/event-poc-cluster.yaml
 kubectl create namespace $app_namespace
 
 eksctl utils associate-iam-oidc-provider --cluster event-driven-poc --approve
 OIDCId=$(aws eks describe-cluster --name $cluster_name --query "cluster.identity.oidc.issuer" --output text | cut -d'/' -f5)
 
 aws cloudformation create-stack --stack-name eks-addon-roles   \
-    --template-body file://./iam/sa-roles-cft.yml   \
+    --template-body file://./iam/${VERS}/sa-roles-cft.yml   \
     --parameters       \
         ParameterKey=ClusterName,ParameterValue=event-driven-poc       \
         ParameterKey=OIDCId,ParameterValue=$OIDCId   \
@@ -59,11 +69,11 @@ echo $EFSCSIrole
 echo $ESOrole
 echo $ALBIngressrole
 
-sed -i "s/^\(\s*namespace:\s*\).*/\1${app_namespace}/" eks/service-accounts/sa.yml
-sed -i "/name: efs-csi-controller-sa/,/eks.amazonaws.com\/role-arn:/ s#^\([[:space:]]*eks.amazonaws.com/role-arn:\).*#\1 $EFSCSIrole#" eks/service-accounts/sa.yml
-sed -i "/name: eso-sa/,/eks.amazonaws.com\/role-arn:/ s#^\([[:space:]]*eks.amazonaws.com/role-arn:\).*#\1 $ESOrole#" eks/service-accounts/sa.yml
-sed -i "/name: aws-alb-ingress-controller/,/eks.amazonaws.com\/role-arn:/ s#^\([[:space:]]*eks.amazonaws.com/role-arn:\).*#\1 $ALBIngressrole#" eks/service-accounts/sa.yml
-kubectl create -f eks/service-accounts/sa.yml
+sed -i "s/^\(\s*namespace:\s*\).*/\1${app_namespace}/" eks/${VERS}/service-accounts/sa.yml
+sed -i "/name: efs-csi-controller-sa/,/eks.amazonaws.com\/role-arn:/ s#^\([[:space:]]*eks.amazonaws.com/role-arn:\).*#\1 $EFSCSIrole#" eks/${VERS}/service-accounts/sa.yml
+sed -i "/name: eso-sa/,/eks.amazonaws.com\/role-arn:/ s#^\([[:space:]]*eks.amazonaws.com/role-arn:\).*#\1 $ESOrole#" eks/${VERS}/service-accounts/sa.yml
+sed -i "/name: aws-alb-ingress-controller/,/eks.amazonaws.com\/role-arn:/ s#^\([[:space:]]*eks.amazonaws.com/role-arn:\).*#\1 $ALBIngressrole#" eks/${VERS}/service-accounts/sa.yml
+kubectl create -f eks/${VERS}/service-accounts/sa.yml
 
 echo "📦 Installing EFS CSI driver add-on..."
 eksctl create addon \
@@ -74,12 +84,12 @@ eksctl create addon \
   --force
 
 echo "💾 Creating EFS filesystem..."
-sed -i "s/CLUSTER_NAME=.*/CLUSTER_NAME=\"$cluster_name\"/" eks/efs/create-efs.sh
-./eks/efs/create-efs.sh
+sed -i "s/CLUSTER_NAME=.*/CLUSTER_NAME=\"$cluster_name\"/" eks/${VERS}/efs/create-efs.sh
+./eks/${VERS}/efs/create-efs.sh ${VERS}
 
 echo "Creating Shared Artifacts PVC for apps..."
-sed -i "s/namespace=.*/namespace=\"$cluster_name\"/" eks/storage/shared-artifacts-pvc.yaml
-kubectl create -f eks/storage/shared-artifacts-pvc.yaml
+sed -i "s/namespace=.*/namespace=\"$cluster_name\"/" eks/${VERS}/storage/shared-artifacts-pvc.yaml
+kubectl create -f eks/${VERS}/storage/shared-artifacts-pvc.yaml
 
 echo "⏳  Waiting for EFS..."
 for i in {1..30}; do
@@ -92,8 +102,8 @@ for i in {1..30}; do
 done
 
 echo "📄 Patching StorageClass with EFS ID: $EFS_ID"
-sed -i "s/fileSystemId: .*/fileSystemId: $EFS_ID/" eks/efs/efs-sc.yaml
-kubectl create -f eks/efs/efs-sc.yaml
+sed -i "s/fileSystemId: .*/fileSystemId: $EFS_ID/" eks/${VERS}/efs/efs-sc.yaml
+kubectl create -f eks/${VERS}/efs/efs-sc.yaml
 
 echo "Setting up external secrets operator...."
 helm repo add external-secrets https://charts.external-secrets.io
@@ -120,7 +130,7 @@ echo "RabbitmqCluster CRD ready, proceeding to deploy..."
 sleep 30
 
 echo "Creating rabbitmq cluster..."
-kubectl apply -f rabbitmq/rabbitmq-cluster.yaml
+kubectl apply -f rabbitmq/${VERS}/rabbitmq-cluster.yaml
 
 echo "⏳  Waiting for RabbitMQ LoadBalancer to become ready..."
 for i in {1..30}; do
@@ -151,9 +161,9 @@ kubectl create secret generic my-rabbit-default-user \
   -n $app_namespace
 
 echo "Updating manifest namespaces..."
-sed -i "s/namespace:.*/namespace: $app_namespace/" manifests/*
+sed -i "s/namespace:.*/namespace: $app_namespace/" manifests/${VERS}/*
 echo "RabbitMQ UI can be acccessed here: $rabbitmqdns"
 echo "RabbitMQ Username: $rabbitusername"
 echo "RabbitMQ Password: $rabbitpassword"
 echo ""
-echo "Run 'kubectl create -f manifests/' to deploy POC.'"
+echo "Run 'kubectl create -f manifests/${VERS}/' to deploy POC.'"

@@ -1,9 +1,13 @@
 #!/bin/bash
 
+VERS=$1
+
+echo "Creating EFS setup for version ${VERS}..."
+
 CLUSTER_NAME="event-driven-poc"
 REGION="us-east-1"
-PARAM_FILE="eks/efs/efs-stack-params.json"
-TEMPLATE="eks/efs/efs-stack.yaml"
+PARAM_FILE="eks/${VERS}/efs/efs-stack-params.json"
+TEMPLATE="eks/${VERS}/efs/efs-stack.yaml"
 
 echo "Fetching EKS cluster details for: $CLUSTER_NAME"
 

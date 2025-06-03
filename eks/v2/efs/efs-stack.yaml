@@ -1,0 +1,71 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: EFS for EKS - Multi-AZ
+
+Parameters:
+  VpcId:
+    Type: String
+    Description: The ID of the VPC created by eksctl
+
+  SubnetIdAz1:
+    Type: String
+    Description: Private subnet in AZ1 (e.g., us-west-2a)
+
+  SubnetIdAz2:
+    Type: String
+    Description: Private subnet in AZ2 (e.g., us-west-2b)
+
+  NodeSecurityGroup:
+    Type: String
+    Description: Security group used by EKS worker nodes
+
+  EfsName:
+    Type: String
+    Description: EFS Filesystem Name
+
+Resources:
+  EfsFileSystem:
+    Type: AWS::EFS::FileSystem
+    Properties:
+      Encrypted: true
+      PerformanceMode: generalPurpose
+      ThroughputMode: bursting
+      FileSystemTags:
+        - Key: Name
+          Value: !Ref EfsName
+
+  EFSSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow NFS access from EKS nodes
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 2049
+          ToPort: 2049
+          SourceSecurityGroupId: !Ref NodeSecurityGroup
+      Tags:
+        - Key: Name
+          Value: eks-efs-sg
+
+  MountTargetAZ1:
+    Type: AWS::EFS::MountTarget
+    Properties:
+      FileSystemId: !Ref EfsFileSystem
+      SubnetId: !Ref SubnetIdAz1
+      SecurityGroups:
+        - !Ref EFSSecurityGroup
+
+  MountTargetAZ2:
+    Type: AWS::EFS::MountTarget
+    Properties:
+      FileSystemId: !Ref EfsFileSystem
+      SubnetId: !Ref SubnetIdAz2
+      SecurityGroups:
+        - !Ref EFSSecurityGroup
+
+Outputs:
+  FileSystemId:
+    Value: !Ref EfsFileSystem
+    Export:
+      Name: !Sub EfsFileSystemId-${AWS::StackName}
+

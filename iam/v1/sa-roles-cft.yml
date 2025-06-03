@@ -1,0 +1,296 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Roles for EFS CSI, ESO, and ALB Ingress add-ons
+
+Parameters:
+  ClusterName:
+    Type: String
+    Description: Name of the EKS cluster
+  OIDCId:
+    Type: String 
+    Description: ID of OIDC provider
+  Namespace:
+    Type: String
+    Description: ESO namespace
+
+Resources:
+
+  # EFS CSI Driver Role
+  EFSCSIRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${ClusterName}-efs-csi-driver"
+      AssumeRolePolicyDocument:
+        Fn::Sub: |
+          {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Principal": {
+                  "Federated": "arn:aws:iam::${AWS::AccountId}:oidc-provider/oidc.eks.${AWS::Region}.amazonaws.com/id/${OIDCId}"
+                },
+                "Action": "sts:AssumeRoleWithWebIdentity",
+                "Condition": {
+                  "StringLike": {
+                    "oidc.eks.${AWS::Region}.amazonaws.com/id/${OIDCId}:sub": "system:serviceaccount:kube-system:efs-csi-controller-sa*",
+                    "oidc.eks.${AWS::Region}.amazonaws.com/id/${OIDCId}:aud": "sts.amazonaws.com"
+                  }
+                }
+              }
+            ]
+          }
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonEFSCSIDriverPolicy
+
+  # External Secrets Operator Role
+  ESORole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${ClusterName}-external-secrets"
+      AssumeRolePolicyDocument:
+        Fn::Sub: |
+          {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Principal": {
+                  "Federated": "arn:aws:iam::${AWS::AccountId}:oidc-provider/oidc.eks.${AWS::Region}.amazonaws.com/id/${OIDCId}"
+                },
+                "Action": "sts:AssumeRoleWithWebIdentity",
+                "Condition": {
+                  "StringLike": {
+                    "oidc.eks.${AWS::Region}.amazonaws.com/id/${OIDCId}:sub": "system:serviceaccount:${Namespace}:eso-sa*",
+                    "oidc.eks.${AWS::Region}.amazonaws.com/id/${OIDCId}:aud": "sts.amazonaws.com"
+                  }
+                }
+              }
+            ]
+          }
+      Policies:
+        - PolicyName: SecretsManagerAccess
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: 
+                  - secretsmanager:GetSecretValue
+                  - secretsmanager:DescribeSecret
+                  - secretsmanager:GetResourcePolicy
+                  - secretsmanager:ListSecretVersionIds
+                Resource: !Sub "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:dev/${Namespace}/azure_speech_vars*"
+
+  # ALB Ingress Controller Role
+  ALBIngressRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${ClusterName}-alb-ingress"
+      AssumeRolePolicyDocument:
+        Fn::Sub: |
+          {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Principal": {
+                  "Federated": "arn:aws:iam::${AWS::AccountId}:oidc-provider/oidc.eks.${AWS::Region}.amazonaws.com/id/${OIDCId}"
+                },
+                "Action": "sts:AssumeRoleWithWebIdentity",
+                "Condition": {
+                  "StringLike": {
+                    "oidc.eks.${AWS::Region}.amazonaws.com/id/${OIDCId}:sub": "system:serviceaccount:kube-system:aws-alb-ingress-controller*",
+                    "oidc.eks.${AWS::Region}.amazonaws.com/id/${OIDCId}:aud": "sts.amazonaws.com"
+                  }
+                }
+              }
+            ]
+          }
+      Policies:
+        - PolicyName: "test-policy"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+            - Condition:
+                StringEquals:
+                  iam:AWSServiceName: "elasticloadbalancing.amazonaws.com"
+              Resource: "*"
+              Action:
+              - "iam:CreateServiceLinkedRole"
+              Effect: "Allow"
+            - Resource: "*"
+              Action:
+              - "ec2:DescribeAccountAttributes"
+              - "ec2:DescribeAddresses"
+              - "ec2:DescribeAvailabilityZones"
+              - "ec2:DescribeInternetGateways"
+              - "ec2:DescribeVpcs"
+              - "ec2:DescribeVpcPeeringConnections"
+              - "ec2:DescribeSubnets"
+              - "ec2:DescribeSecurityGroups"
+              - "ec2:DescribeInstances"
+              - "ec2:DescribeNetworkInterfaces"
+              - "ec2:DescribeTags"
+              - "ec2:GetCoipPoolUsage"
+              - "ec2:DescribeCoipPools"
+              - "ec2:GetSecurityGroupsForVpc"
+              - "ec2:DescribeIpamPools"
+              - "ec2:DescribeRouteTables"
+              - "elasticloadbalancing:DescribeLoadBalancers"
+              - "elasticloadbalancing:DescribeLoadBalancerAttributes"
+              - "elasticloadbalancing:DescribeListeners"
+              - "elasticloadbalancing:DescribeListenerCertificates"
+              - "elasticloadbalancing:DescribeSSLPolicies"
+              - "elasticloadbalancing:DescribeRules"
+              - "elasticloadbalancing:DescribeTargetGroups"
+              - "elasticloadbalancing:DescribeTargetGroupAttributes"
+              - "elasticloadbalancing:DescribeTargetHealth"
+              - "elasticloadbalancing:DescribeTags"
+              - "elasticloadbalancing:DescribeTrustStores"
+              - "elasticloadbalancing:DescribeListenerAttributes"
+              - "elasticloadbalancing:DescribeCapacityReservation"
+              Effect: "Allow"
+            - Resource: "*"
+              Action:
+              - "cognito-idp:DescribeUserPoolClient"
+              - "acm:ListCertificates"
+              - "acm:DescribeCertificate"
+              - "iam:ListServerCertificates"
+              - "iam:GetServerCertificate"
+              - "waf-regional:GetWebACL"
+              - "waf-regional:GetWebACLForResource"
+              - "waf-regional:AssociateWebACL"
+              - "waf-regional:DisassociateWebACL"
+              - "wafv2:GetWebACL"
+              - "wafv2:GetWebACLForResource"
+              - "wafv2:AssociateWebACL"
+              - "wafv2:DisassociateWebACL"
+              - "shield:GetSubscriptionState"
+              - "shield:DescribeProtection"
+              - "shield:CreateProtection"
+              - "shield:DeleteProtection"
+              Effect: "Allow"
+            - Resource: "*"
+              Action:
+              - "ec2:AuthorizeSecurityGroupIngress"
+              - "ec2:RevokeSecurityGroupIngress"
+              Effect: "Allow"
+            - Resource: "*"
+              Action:
+              - "ec2:CreateSecurityGroup"
+              Effect: "Allow"
+            - Condition:
+                StringEquals:
+                  ec2:CreateAction: "CreateSecurityGroup"
+                "Null":
+                  aws:RequestTag/elbv2.k8s.aws/cluster: "false"
+              Resource: "arn:aws:ec2:*:*:security-group/*"
+              Action:
+              - "ec2:CreateTags"
+              Effect: "Allow"
+            - Condition:
+                "Null":
+                  aws:RequestTag/elbv2.k8s.aws/cluster: "true"
+                  aws:ResourceTag/elbv2.k8s.aws/cluster: "false"
+              Resource: "arn:aws:ec2:*:*:security-group/*"
+              Action:
+              - "ec2:CreateTags"
+              - "ec2:DeleteTags"
+              Effect: "Allow"
+            - Condition:
+                "Null":
+                  aws:ResourceTag/elbv2.k8s.aws/cluster: "false"
+              Resource: "*"
+              Action:
+              - "ec2:AuthorizeSecurityGroupIngress"
+              - "ec2:RevokeSecurityGroupIngress"
+              - "ec2:DeleteSecurityGroup"
+              Effect: "Allow"
+            - Condition:
+                "Null":
+                  aws:RequestTag/elbv2.k8s.aws/cluster: "false"
+              Resource: "*"
+              Action:
+              - "elasticloadbalancing:CreateLoadBalancer"
+              - "elasticloadbalancing:CreateTargetGroup"
+              Effect: "Allow"
+            - Resource: "*"
+              Action:
+              - "elasticloadbalancing:CreateListener"
+              - "elasticloadbalancing:DeleteListener"
+              - "elasticloadbalancing:CreateRule"
+              - "elasticloadbalancing:DeleteRule"
+              Effect: "Allow"
+            - Condition:
+                "Null":
+                  aws:RequestTag/elbv2.k8s.aws/cluster: "true"
+                  aws:ResourceTag/elbv2.k8s.aws/cluster: "false"
+              Resource:
+              - "arn:aws:elasticloadbalancing:*:*:targetgroup/*/*"
+              - "arn:aws:elasticloadbalancing:*:*:loadbalancer/net/*/*"
+              - "arn:aws:elasticloadbalancing:*:*:loadbalancer/app/*/*"
+              Action:
+              - "elasticloadbalancing:AddTags"
+              - "elasticloadbalancing:RemoveTags"
+              Effect: "Allow"
+            - Resource:
+              - "arn:aws:elasticloadbalancing:*:*:listener/net/*/*/*"
+              - "arn:aws:elasticloadbalancing:*:*:listener/app/*/*/*"
+              - "arn:aws:elasticloadbalancing:*:*:listener-rule/net/*/*/*"
+              - "arn:aws:elasticloadbalancing:*:*:listener-rule/app/*/*/*"
+              Action:
+              - "elasticloadbalancing:AddTags"
+              - "elasticloadbalancing:RemoveTags"
+              Effect: "Allow"
+            - Condition:
+                "Null":
+                  aws:ResourceTag/elbv2.k8s.aws/cluster: "false"
+              Resource: "*"
+              Action:
+              - "elasticloadbalancing:ModifyLoadBalancerAttributes"
+              - "elasticloadbalancing:SetIpAddressType"
+              - "elasticloadbalancing:SetSecurityGroups"
+              - "elasticloadbalancing:SetSubnets"
+              - "elasticloadbalancing:DeleteLoadBalancer"
+              - "elasticloadbalancing:ModifyTargetGroup"
+              - "elasticloadbalancing:ModifyTargetGroupAttributes"
+              - "elasticloadbalancing:DeleteTargetGroup"
+              - "elasticloadbalancing:ModifyListenerAttributes"
+              - "elasticloadbalancing:ModifyCapacityReservation"
+              - "elasticloadbalancing:ModifyIpPools"
+              Effect: "Allow"
+            - Condition:
+                StringEquals:
+                  elasticloadbalancing:CreateAction:
+                  - "CreateTargetGroup"
+                  - "CreateLoadBalancer"
+                "Null":
+                  aws:RequestTag/elbv2.k8s.aws/cluster: "false"
+              Resource:
+              - "arn:aws:elasticloadbalancing:*:*:targetgroup/*/*"
+              - "arn:aws:elasticloadbalancing:*:*:loadbalancer/net/*/*"
+              - "arn:aws:elasticloadbalancing:*:*:loadbalancer/app/*/*"
+              Action:
+              - "elasticloadbalancing:AddTags"
+              Effect: "Allow"
+            - Resource: "arn:aws:elasticloadbalancing:*:*:targetgroup/*/*"
+              Action:
+              - "elasticloadbalancing:RegisterTargets"
+              - "elasticloadbalancing:DeregisterTargets"
+              Effect: "Allow"
+            - Resource: "*"
+              Action:
+              - "elasticloadbalancing:SetWebAcl"
+              - "elasticloadbalancing:ModifyListener"
+              - "elasticloadbalancing:AddListenerCertificates"
+              - "elasticloadbalancing:RemoveListenerCertificates"
+              - "elasticloadbalancing:ModifyRule"
+              - "elasticloadbalancing:SetRulePriorities"
+              Effect: "Allow"
+  
+Outputs:
+  EFSCSIRoleArn:
+    Value: !GetAtt EFSCSIRole.Arn
+  ESORoleArn:
+    Value: !GetAtt ESORole.Arn
+  ALBIngressRoleArn:
+    Value: !GetAtt ALBIngressRole.Arn
