@@ -1,0 +1,87 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Windows EC2 Auto Scaling Group for PowerPoint Rendering Agent
+
+Parameters:
+  AmiId:
+    Type: AWS::EC2::Image::Id
+    Description: Pre-baked Windows AMI with PowerPoint and agent.py
+
+  InstanceType:
+    Type: String
+    Default: t3.large
+
+  IamInstanceProfile:
+    Type: String
+    Description: Name of the instance profile for EC2
+
+  SecurityGroupId:
+    Type: AWS::EC2::SecurityGroup::Id
+
+  KeyName:
+    Type: AWS::EC2::KeyPair::KeyName
+
+  SubnetId:
+    Type: AWS::EC2::Subnet::Id
+
+Resources:
+  RenderLaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+      LaunchTemplateName: windows-render-agent-template
+      LaunchTemplateData:
+        ImageId: !Ref AmiId
+        InstanceType: !Ref InstanceType
+        KeyName: !Ref KeyName
+        NetworkInterfaces:
+          - DeviceIndex: 0
+            AssociatePublicIpAddress: true
+            SubnetId: !Ref SubnetId
+            Groups:
+              - !Ref SecurityGroupId
+        IamInstanceProfile:
+          Name: !Ref IamInstanceProfile
+        UserData:
+          Fn::Base64: !Sub |
+            <powershell>
+            Invoke-WebRequest -Uri https://awscli.amazonaws.com/AWSCLIV2.msi -OutFile awscliv2.msi
+            Start-Process msiexec.exe -ArgumentList '/i awscliv2.msi /quiet' -Wait
+            Remove-Item awscliv2.msi
+
+            $region = "${AWS::Region}"
+            $rabbitmq = aws ssm get-parameter --name "/myapp/rabbitmq" --region $region --query 'Parameter.Value' --output text
+            $nfs = aws ssm get-parameter --name "/myapp/nfs" --region $region --query 'Parameter.Value' --output text
+
+            Install-WindowsFeature NFS-Client
+            pip install pika pywin32
+
+            New-Item -Path "Z:\" -ItemType Directory -Force
+            mount -o anon \\$nfs Z:
+
+            [System.Environment]::SetEnvironmentVariable("RABBITMQ_HOST", $rabbitmq, "Machine")
+
+            echo python C:\render-agent\agent.py > C:\render-agent\start.bat
+            schtasks /Create /TN "RenderAgent" /TR "C:\render-agent\start.bat" /SC ONSTART /RU SYSTEM /RL HIGHEST
+            </powershell>
+
+  RenderAutoScalingGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      VPCZoneIdentifier:
+        - !Ref SubnetId
+      LaunchTemplate:
+        LaunchTemplateId: !Ref RenderLaunchTemplate
+        Version: !GetAtt RenderLaunchTemplate.LatestVersionNumber
+      MinSize: 1
+      MaxSize: 1
+      DesiredCapacity: 1
+      Tags:
+        - Key: Name
+          Value: windows-render-agent
+          PropagateAtLaunch: true
+
+Outputs:
+  LaunchTemplateId:
+    Value: !Ref RenderLaunchTemplate
+
+  AutoScalingGroupName:
+    Value: !Ref RenderAutoScalingGroup

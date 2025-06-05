@@ -1,8 +1,0 @@
-apiVersion: ssm.services.k8s.aws/v1alpha1
-kind: Parameter
-metadata:
-  name: my-rabbitmq-endpoint
-spec:
-  name: /event_poc/rabbitmq
-  type: String
-  value: rabbitmq.default.svc.cluster.local
