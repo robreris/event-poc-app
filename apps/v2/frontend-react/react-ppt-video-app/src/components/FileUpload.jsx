@@ -78,34 +78,59 @@ export default function FileUpload({ onUploadComplete }) {
         <div className="upload-form-group">
           <label className="upload-label">Videos (mp4, optional):</label>
           {videoFiles.map((file, idx) => (
-            <div key={idx} style={{ display: "flex", alignItems: "center", marginBottom: 5 }}>
+            <div
+              key={idx}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                marginBottom: 7,
+                background: "#f8fafc",
+                borderRadius: 7,
+                padding: "7px 7px 7px 0",
+              }}
+            >
               <input
                 className="upload-input"
                 type="file"
                 accept="video/mp4"
-                onChange={(e) =>
-                  handleVideoChange(idx, e.target.files && e.target.files[0])
-                }
-                style={{ flex: 1 }}
+                onChange={(e) => handleVideoChange(idx, e.target.files && e.target.files[0])}
+                style={{ flex: 1, marginRight: 8, background: "#f8fafc" }}
               />
               {file && (
-                <span style={{ marginLeft: 10, fontSize: 14 }}>{file.name}</span>
+                <span style={{ fontSize: 15, color: "#445", marginRight: 12 }}>
+                  {file.name}
+                </span>
               )}
               {videoFiles.length > 1 && (
                 <button
                   type="button"
                   aria-label="Remove"
                   style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 3,
                     background: "none",
                     border: "none",
-                    color: "#dc3545",
-                    fontSize: 20,
+                    color: "#c61d2f",
+                    fontWeight: "500",
+                    fontSize: 15,
                     cursor: "pointer",
-                    marginLeft: 8,
+                    marginLeft: 0,
                   }}
                   onClick={() => handleRemoveVideo(idx)}
                 >
-                  ❌
+                  <span
+                    style={{
+                      fontSize: 19,
+                      lineHeight: 1,
+                      marginRight: 2,
+                      verticalAlign: "middle",
+                    }}
+                    aria-hidden="true"
+                  >
+                    ❌
+                  </span>
+                  Remove
                 </button>
               )}
             </div>
@@ -119,9 +144,10 @@ export default function FileUpload({ onUploadComplete }) {
               fontWeight: "600",
               border: "none",
               borderRadius: 6,
-              padding: "5px 14px",
+              padding: "7px 14px",
               marginTop: 6,
               cursor: "pointer",
+              width: "100%",
             }}
           >
             ＋ Add another video
