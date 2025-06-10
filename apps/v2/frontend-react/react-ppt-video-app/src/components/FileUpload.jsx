@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import axios from "axios";
 
 const TTS_VOICES = [
   { value: "en-US-JennyNeural", label: "Jenny (US)" },
@@ -30,34 +31,37 @@ export default function FileUpload({ onUploadComplete }) {
     setVideoFiles((prev) => prev.filter((_, i) => i !== index));
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!pptFile) {
       setStatus("Please select a PowerPoint file.");
       return;
     }
+    if (!ttsVoice) {
+      setStatus("Please select a TTS voice.");
+      return;
+    }
     setStatus("Uploading...");
-    setTimeout(() => {
+    const formData = new FormData();
+    formData.append("ppt", pptFile);
+    videoFiles.filter(Boolean).forEach((file, idx) => {
+      formData.append("videos", file);
+    });
+    formData.append("voice", ttsVoice);
+
+    try {
+      const response = await axios.post("/upload", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
       setStatus("✅ Uploaded!");
       if (onUploadComplete) {
-        onUploadComplete({
-          pptx_file_id: "mock-pptx-id",
-          slides: [
-            { slide_id: 1, slide_number: 1, nfs_path: "/nfs/slides/1.png" },
-            { slide_id: 2, slide_number: 2, nfs_path: "/nfs/slides/2.png" },
-            { slide_id: 3, slide_number: 3, nfs_path: "/nfs/slides/3.png" },
-          ],
-          videos: videoFiles
-            .filter((file) => !!file)
-            .map((file, i) => ({
-              file_id: `mock-video-${i + 1}`,
-              filename: file.name,
-              nfs_path: `/nfs/videos/${file.name}`,
-            })),
-          tts_voice: ttsVoice,
-        });
+        onUploadComplete(response.data); // <-- send full backend response up to App
       }
-    }, 1000);
+    } catch (err) {
+      setStatus("Upload failed!");
+      console.error(err);
+    }
+  };
   };
 
   return (

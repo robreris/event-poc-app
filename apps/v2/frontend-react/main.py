@@ -1,4 +1,4 @@
-from fastapi import FastAPI, UploadFile, File, Form, Request
+from fastapi import FastAPI, UploadFile, File, Form, Request, APIRouter()
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
 from app.storage import save_to_efs, save_bumper_to_efs
@@ -12,6 +12,7 @@ import hashlib
 import asyncio
 
 app = FastAPI()
+router = APIRouter()
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 @app.on_event("startup")
@@ -43,30 +44,40 @@ async def upload_files(
      videos: List[UploadFile] = File(...),
      voice: str = Form(...)
 ):
-    ppt_file_id = str(uuid.uuid4())
-    ppt_path = save_to_efs(ppt, ppt.filename, {})
+    # 1. Generate a unique job_id for this upload session
+    job_id = str(uuid.uuid4())
+    pptx_file_id = str(uuid.uuid4())
+
+    pptx_filename = f"{job_id}_{pptx_file_id}_{ppt.filename}"
+    pptx_nfs_path = save_to_efs(ppt, pptx_filename, {"job_id": job_id, "file_id": pptx_file_id})
 
     video_infos = []
     for vid in videos:
         video_id = str(uuid.uuid4())
-        path = save_bumper_to_efs(vid, vid.filename)
+        video_filename = f"{job_id}_{video_id}_{vid.filename}"
+        video_nfs_path = save_to_efs(vid, video_filename, {"job_id": job_id, "file_id": video_id})
         video_infos.append({
             "file_id": video_id,
             "filename": vid.filename,
-            "nfs_path": path,
+            "nfs_path": video_nfs_path,
         })
 
+    # 4. (Placeholder) Generate slide metadata—replace with real extraction later
+    slides = [
+        {"slide_id": i+1, "slide_number": i+1, "nfs_path": f"/nfs/slides/{job_id}_slide_{i+1}.png"}
+        for i in range(3)
+    ]
+
+    # 5. Return ALL real metadata for frontend tracking
     return {
-        "pptx_file_id": ppt_file_id,
+        "job_id": job_id,
+        "pptx_file_id": pptx_file_id,
         "pptx_filename": ppt.filename,
-        "pptx_nfs_path": ppt_path,
+        "pptx_nfs_path": pptx_nfs_path,
         "videos": video_infos,
         "tts_voice": voice,
-        # Optionally, fake slide metadata or process slides here
-        "slides": [
-            # Fill in after slide extraction step, or just numbers for now
-        ]
-    }
+        "slides": slides,
+    }    
 
 @app.post("/job/submit")
 async def submit_job(request: Request):

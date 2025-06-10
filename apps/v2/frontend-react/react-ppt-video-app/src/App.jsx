@@ -31,33 +31,36 @@ function App() {
     setJobStatus("Submitting...");
     // Prepare backend payload
     const payload = {
-      sequence: sequence.map((item) =>
-        item.type === "slide"
-          ? {
-              type: "slide",
-              slide_id: item.slide_id,
-              nfs_path: item.nfs_path,
-            }
-          : {
-              type: "video",
-              file_id: item.file_id,
-              filename: item.filename,
-              nfs_path: item.nfs_path,
-            }
-      ),
+      job_id: uploadData.job_id,                 // << NEW: Pass through job_id
       pptx_file_id: uploadData.pptx_file_id,
-      videos: uploadData.videos,
+      pptx_nfs_path: uploadData.pptx_nfs_path,
       tts_voice: uploadData.tts_voice,
+      videos: uploadData.videos,
+      sequence: sequence.map((item) =>
+      item.type === "slide"
+        ? {
+            type: "slide",
+            slide_id: item.slide_id,
+            nfs_path: item.nfs_path,
+          }
+        : {
+            type: "video",
+            file_id: item.file_id,
+            filename: item.filename,
+            nfs_path: item.nfs_path,
+          }
+      ),
     };
 
-    // MOCK: Simulate network call and backend job
-    setTimeout(() => {
-      setJobStatus("✅ Submitted! Your job is processing (mock).");
-    }, 1200);
+  try {
+    await axios.post("/job/submit", payload);
+    setJobStatus("✅ Submitted! Your job is processing.");
+  } catch (err) {
+    setJobStatus("Submission failed!");
+    console.error(err);
+  }
 
-    // Real API call (when ready):
-    // await axios.post("/job/submit", payload);
-  };
+};
 
 
   return (
