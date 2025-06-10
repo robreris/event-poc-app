@@ -62,7 +62,6 @@ export default function FileUpload({ onUploadComplete }) {
       console.error(err);
     }
   };
-  };
 
   return (
     <div className="upload-container">

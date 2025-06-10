@@ -1,4 +1,4 @@
-from fastapi import FastAPI, UploadFile, File, Form, Request, APIRouter()
+from fastapi import FastAPI, UploadFile, File, Form, Request, APIRouter
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
 from app.storage import save_to_efs, save_bumper_to_efs

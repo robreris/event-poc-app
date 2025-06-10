@@ -1,8 +1,11 @@
-FROM python:3.10-slim
+FROM node:20 as build
 
 WORKDIR /app
 COPY . .
-COPY static ./static
-RUN pip install --no-cache-dir -r requirements.txt
+RUN npm install
+RUN npm run build
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "80"]
+FROM nginx:alpine
+COPY --from=build /app/dist /usr/share/nginx/html
+EXPOSE 80
+CMD ["nginx", "-g", "daemon off;"]
