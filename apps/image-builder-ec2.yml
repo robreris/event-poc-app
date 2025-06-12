@@ -1,0 +1,90 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: EC2 Instance with IAM Role for Session Manager Access
+
+Parameters:
+  InstanceType:
+    Type: String
+    Default: t3.small
+    AllowedValues:
+      - t3.micro
+      - t3.small
+      - t3.medium
+      - t3.large
+    Description: EC2 instance type
+
+  KeyName:
+    Description: (Optional) EC2 Key Pair Name (not needed for SSM, leave blank if not using SSH)
+    Type: String
+    Default: ""
+    AllowedPattern: ".*"
+
+Resources:
+  InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles: [ !Ref EC2Role ]
+
+  EC2Role:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      Path: /
+      ManagedPolicyArns:
+        # SSM core permissions
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+        # ECR access (to login, pull, push images)
+        - arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryPowerUser
+
+  InstanceSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow all egress for build box
+      VpcId: !Ref 'AWS::NoValue'
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+
+  BuildInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: !Sub "{{resolve:ssm:/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-arm64}}"
+      InstanceType: !Ref InstanceType
+      IamInstanceProfile: !Ref InstanceProfile
+      SecurityGroupIds: [ !Ref InstanceSecurityGroup ]
+      Tags:
+        - Key: Name
+          Value: BuildBox-SessionManager
+      BlockDeviceMappings:
+        - DeviceName: /dev/xvda
+          Ebs:
+            VolumeSize: 32
+            VolumeType: gp3
+    Metadata:
+      AWS::CloudFormation::Init:
+        config:
+          packages:
+            yum:
+              docker: []
+              git: []
+          commands:
+            enable_docker:
+              command: |
+                sudo systemctl enable docker && sudo systemctl start docker
+                sudo usermod -aG docker ec2-user
+          files: {}
+          services: {}
+
+Outputs:
+  InstanceId:
+    Description: Instance ID of the build box
+    Value: !Ref BuildInstance
+  PublicDnsName:
+    Description: Not required for SSM, but output in case
+    Value: !GetAtt BuildInstance.PublicDnsName
+

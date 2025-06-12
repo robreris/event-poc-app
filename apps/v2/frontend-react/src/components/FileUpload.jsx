@@ -1,6 +1,9 @@
 import React, { useState } from "react";
 import axios from "axios";
 
+// Use relative URL for API requests
+const API_URL = "/api";
+
 const TTS_VOICES = [
   { value: "en-US-JennyNeural", label: "Jenny (US)" },
   { value: "en-GB-RyanNeural", label: "Ryan (UK)" },
@@ -10,13 +13,14 @@ const TTS_VOICES = [
 
 export default function FileUpload({ onUploadComplete }) {
   const [pptFile, setPptFile] = useState(null);
-  const [videoFiles, setVideoFiles] = useState([null]); // Start with one video input
+  const [videoFiles, setVideoFiles] = useState([null]);
   const [ttsVoice, setTtsVoice] = useState("");
   const [status, setStatus] = useState("");
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [error, setError] = useState("");
 
   const handlePptChange = (e) => setPptFile(e.target.files[0]);
 
-  // For each input, update only that file in the array
   const handleVideoChange = (index, file) => {
     setVideoFiles((prev) => {
       const updated = [...prev];
@@ -33,6 +37,8 @@ export default function FileUpload({ onUploadComplete }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setError("");
+    
     if (!pptFile) {
       setStatus("Please select a PowerPoint file.");
       return;
@@ -41,25 +47,38 @@ export default function FileUpload({ onUploadComplete }) {
       setStatus("Please select a TTS voice.");
       return;
     }
+
     setStatus("Uploading...");
+    setUploadProgress(0);
+
     const formData = new FormData();
     formData.append("ppt", pptFile);
-    videoFiles.filter(Boolean).forEach((file, idx) => {
+    videoFiles.filter(Boolean).forEach((file) => {
       formData.append("videos", file);
     });
     formData.append("voice", ttsVoice);
 
     try {
-      const response = await axios.post("/upload", formData, {
+      console.log("Uploading to:", `${API_URL}/upload`);
+      const response = await axios.post(`${API_URL}/upload`, formData, {
         headers: { "Content-Type": "multipart/form-data" },
+        onUploadProgress: (progressEvent) => {
+          const percentCompleted = Math.round(
+            (progressEvent.loaded * 100) / progressEvent.total
+          );
+          setUploadProgress(percentCompleted);
+        },
       });
+
+      console.log("Upload response:", response.data);
       setStatus("✅ Uploaded!");
       if (onUploadComplete) {
-        onUploadComplete(response.data); // <-- send full backend response up to App
+        onUploadComplete(response.data);
       }
     } catch (err) {
+      console.error("Upload error:", err);
+      setError(err.response?.data?.detail || err.message || "Upload failed!");
       setStatus("Upload failed!");
-      console.error(err);
     }
   };
 
@@ -175,11 +194,26 @@ export default function FileUpload({ onUploadComplete }) {
             ))}
           </select>
         </div>
+
         <button type="submit" className="upload-button">
           Upload
         </button>
       </form>
-      <div style={{ marginTop: 18, textAlign: "center" }}>{status}</div>
+      
+      {uploadProgress > 0 && (
+        <div className="progress-bar">
+          <div
+            className="progress-bar-fill"
+            style={{ width: `${uploadProgress}%` }}
+          />
+          <span className="progress-text">{uploadProgress}%</span>
+        </div>
+      )}
+      
+      <div style={{ marginTop: 18, textAlign: "center" }}>
+        {error && <div style={{ color: "#c61d2f", marginBottom: 8 }}>{error}</div>}
+        {status}
+      </div>
     </div>
   );
 }
