@@ -17,6 +17,8 @@ kubectl delete -f manifests/${VERS}
 
 kubectl delete -f rabbitmq/${VERS}/rabbitmq-cluster.yaml
 
+aws cloudformation delete-stack --stack-name $app_namespace-windows-ra-ec2
+
 aws cloudformation delete-stack --stack-name $cluster_name-efs
 
 aws cloudformation delete-stack --stack-name eks-addon-roles

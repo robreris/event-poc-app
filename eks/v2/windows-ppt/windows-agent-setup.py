@@ -7,6 +7,9 @@ from pathlib import Path
 
 NFS_MOUNT = "Z:\\"
 RABBITMQ_HOST = os.getenv("RABBITMQ_HOST", "localhost")
+RABBITMQ_USER = os.getenv("RABBITMQ_USER", "localhost")
+RABBITMQ_PASS = os.getenv("RABBITMQ_PASS", "localhost")
+RABBITMQ_PORT = os.getenv("RABBITMQ_PORT", "15672")
 QUEUE_NAME = "render_jobs"
 
 def render_pptx(ppt_path: str, output_path: str):
@@ -46,7 +49,20 @@ def callback(ch, method, properties, body):
     ch.basic_ack(delivery_tag=method.delivery_tag)
 
 def main():
-    connection = pika.BlockingConnection(pika.ConnectionParameters(host=RABBITMQ_HOST))
+    
+    connection_params = pika.ConnectionParameters(
+        host=RABBITMQ_HOST,
+        port=RABBITMQ_PORT,
+        credentials=pika.PlainCredentials(
+          RABBITMQ_USER,
+          RABBITMQ_PASS
+        ),
+        heartbeat=600,
+        blocked_connection_timeout=300,
+        connection_attempts=3,
+        retry_delay=5
+    )
+    connection = pika.BlockingConnection(connection_params)
     channel = connection.channel()
     channel.queue_declare(queue=QUEUE_NAME)
     channel.basic_qos(prefetch_count=1)

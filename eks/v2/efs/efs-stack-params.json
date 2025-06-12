@@ -1,19 +1,19 @@
 [
   {
     "ParameterKey": "VpcId",
-    "ParameterValue": "vpc-0a61b2baade50a494"
+    "ParameterValue": "vpc-0358601874197f138"
   },
   {
     "ParameterKey": "SubnetIdAz1",
-    "ParameterValue": "subnet-028a2d79db57062de"
+    "ParameterValue": "subnet-0e4c8346a971069b2"
   },
   {
     "ParameterKey": "SubnetIdAz2",
-    "ParameterValue": "subnet-0279b4a10aaeef1f3"
+    "ParameterValue": "subnet-0eb6696779f10c6c0"
   },
   {
     "ParameterKey": "NodeSecurityGroup",
-    "ParameterValue": "sg-0ebd384437318aa93"
+    "ParameterValue": "sg-0d39639a46fcddbea"
   },
   {
     "ParameterKey": "EfsName",

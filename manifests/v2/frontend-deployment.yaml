@@ -1,0 +1,73 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend-react
+  namespace: event-poc
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: frontend-react
+  template:
+    metadata:
+      labels:
+        app: frontend-react
+    spec:
+      containers:
+      - name: frontend-react
+        image: 228122752878.dkr.ecr.us-east-1.amazonaws.com/event-driven-poc-frontend-react
+        ports:
+        - containerPort: 80
+        env:
+        - name: VITE_API_URL
+          value: "http://backend-fastapi.event-poc.svc.cluster.local"
+        - name: BACKEND_URL
+          value: "http://backend-fastapi.event-poc.svc.cluster.local:8000" 
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend-react
+  namespace: event-poc
+spec:
+  selector:
+    app: frontend-react
+  ports:
+  - port: 80
+    targetPort: 80
+  type: ClusterIP
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: frontend-ingress
+  namespace: event-poc
+  annotations:
+    kubernetes.io/ingress.class: alb
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+spec:
+  rules:
+  - http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: frontend-react
+            port:
+              number: 80
+      - path: /api
+        pathType: Prefix
+        backend:
+          service:
+            name: backend-fastapi
+            port:
+              number: 80 

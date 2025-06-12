@@ -1,29 +1,129 @@
-from fastapi import FastAPI, UploadFile, File, Form, Request, APIRouter
+from fastapi import FastAPI, UploadFile, File, Form, Request, APIRouter, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
 from app.storage import save_to_efs, save_bumper_to_efs
 from app.rabbitmq import publish_message, rabbitmq_listener
 from app.state import state
-from typing import List
+from typing import List, Dict, Any
 import uuid
 import os
 from datetime import datetime
 import hashlib
 import asyncio
+from fastapi.middleware.cors import CORSMiddleware
+import shutil
+from celery import Celery
+from pathlib import Path
+import kubernetes
+from kubernetes import client, config
+import json
+from .config import (
+    RABBITMQ_HOST,
+    RABBITMQ_PORT,
+    RABBITMQ_USER,
+    RABBITMQ_PASSWORD,
+    NFS_MOUNT_POINT
+)
 
 app = FastAPI()
-router = APIRouter()
-app.mount("/static", StaticFiles(directory="static"), name="static")
+router = APIRouter(prefix="/api")
+#app.mount("/static", StaticFiles(directory="static"), name="static")
+
+# Configure CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["*"],
+    expose_headers=["*"],
+    max_age=3600,
+)
+
+# Configure Celery with RabbitMQ credentials
+celery_app = Celery(
+    'tasks',
+    broker=f'amqp://{RABBITMQ_USER}:{RABBITMQ_PASSWORD}@{RABBITMQ_HOST}:{RABBITMQ_PORT}//',
+    backend='rpc://'
+)
+
+# Configure upload directory
+UPLOAD_DIR = os.path.join(NFS_MOUNT_POINT, "uploads")
+
+# Ensure upload directory exists
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+# Store for processed slides from Windows component
+windows_processed_jobs: Dict[str, Dict[str, Any]] = {}
+
+def handle_windows_response(ch, method, properties, body):
+    """
+    Handle response from Windows component
+    """
+    try:
+        data = json.loads(body)
+        job_id = data.get("job_id")
+        if job_id:
+            windows_processed_jobs[job_id] = {
+                "slides": data.get("slides", []),
+                "videos": data.get("videos", []),
+                "ready": True
+            }
+            print(f"Received processed data for job {job_id}")
+    except Exception as e:
+        print(f"Error processing Windows component response: {str(e)}")
+
+def get_rabbitmq_credentials():
+    """
+    Get RabbitMQ credentials either from Kubernetes secrets or environment variables
+    """
+    try:
+        # Try to load Kubernetes config
+        try:
+            config.load_incluster_config()
+            # If we're in Kubernetes, get credentials from secret
+            v1 = client.CoreV1Api()
+            secret = v1.read_namespaced_secret("my-rabbit-default-user", "event-poc")
+            return {
+                "username": secret.data["username"].decode(),
+                "password": secret.data["password"].decode()
+            }
+        except (config.ConfigException, kubernetes.client.exceptions.ApiException):
+            # If we're not in Kubernetes or secret doesn't exist, use environment variables
+            return {
+                "username": RABBITMQ_USER,
+                "password": RABBITMQ_PASSWORD
+            }
+    except Exception as e:
+        print(f"Error getting RabbitMQ credentials: {str(e)}")
+        # Fallback to environment variables
+        return {
+            "username": RABBITMQ_USER,
+            "password": RABBITMQ_PASSWORD
+        }
+
+@celery_app.task
+def process_uploaded_files(job_data):
+    """
+    Celery task to process uploaded files and send message to next microservice
+    """
+    try:
+        # Publish message to RabbitMQ for next microservice
+        publish_message(job_data, queue="file_processing")
+    except Exception as e:
+        print(f"Error processing files: {str(e)}")
+        raise
 
 @app.on_event("startup")
 async def startup_event():
-    asyncio.create_task(rabbitmq_listener())
+    # Start RabbitMQ listener for Windows component responses
+    asyncio.create_task(rabbitmq_listener(queue="windows_response", callback=handle_windows_response))
 
-@app.get("/debug-ready")
+@router.get("/debug-ready")
 async def debug_ready():
     return state.ready_downloads
 
-@app.get("/check-download/{file_id}")
+@router.get("/check-download/{file_id}")
 async def check_download(file_id: str):
     print(f"check-download called for file_id: {file_id}")
     if file_id in state.ready_downloads:
@@ -31,67 +131,104 @@ async def check_download(file_id: str):
     else:
         return JSONResponse(content={"ready": False})
 
-@app.get("/download/{file_id}")
+@router.get("/check-windows-processing/{job_id}")
+async def check_windows_processing(job_id: str):
+    """
+    Check if Windows component has finished processing the job
+    """
+    print(f"check-windows-processing called for job_id: {job_id}")
+    if job_id in windows_processed_jobs:
+        return JSONResponse(content={
+            "ready": True,
+            "slides": windows_processed_jobs[job_id].get("slides", []),
+            "videos": windows_processed_jobs[job_id].get("videos", [])
+        })
+    else:
+        return JSONResponse(content={"ready": False})
+
+@router.get("/download/{file_id}")
 async def download_file(file_id: str):
     file_path = state.ready_downloads.get(file_id)
     if not file_path:
         return {"error": "File not ready yet"}
     return FileResponse(file_path, filename=os.path.basename(file_path))
 
-@app.post("/upload")
+@router.post("/upload")
 async def upload_files(
-     ppt: UploadFile = File(...),
-     videos: List[UploadFile] = File(...),
-     voice: str = Form(...)
+    ppt: UploadFile = File(...),
+    videos: List[UploadFile] = File([]),
+    voice: str = Form(...)
 ):
-    # 1. Generate a unique job_id for this upload session
-    job_id = str(uuid.uuid4())
-    pptx_file_id = str(uuid.uuid4())
+    try:
+        print(f"Received upload request - PPT: {ppt.filename}, Voice: {voice}, Videos: {[v.filename for v in videos if v]}")
+        
+        # Generate unique job ID
+        job_id = str(uuid.uuid4())
+        
+        # Create job directory
+        job_dir = os.path.join(UPLOAD_DIR, job_id)
+        os.makedirs(job_dir, exist_ok=True)
+        print(f"Created job directory: {job_dir}")
+        
+        # Save PowerPoint file
+        ppt_path = os.path.join(job_dir, ppt.filename)
+        with open(ppt_path, "wb") as buffer:
+            shutil.copyfileobj(ppt.file, buffer)
+        print(f"Saved PowerPoint file to: {ppt_path}")
+        
+        # Save video files
+        video_paths = []
+        for video in videos:
+            if video:
+                video_path = os.path.join(job_dir, video.filename)
+                with open(video_path, "wb") as buffer:
+                    shutil.copyfileobj(video.file, buffer)
+                video_paths.append({
+                    "filename": video.filename,
+                    "nfs_path": video_path
+                })
+                print(f"Saved video file to: {video_path}")
+        
+        # Prepare response data
+        response_data = {
+            "job_id": job_id,
+            "pptx_file_id": ppt.filename,
+            "pptx_nfs_path": ppt_path,
+            "tts_voice": voice,
+            "videos": video_paths,
+            "slides": []  # Added empty slides array to prevent frontend TypeError
+        }
+        
+        print(f"Publishing message to RabbitMQ: {response_data}")
+        # Trigger Celery task
+        process_uploaded_files.delay(response_data)
+        
+        return response_data
+    except Exception as e:
+        print(f"Error in upload_files: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
-    pptx_filename = f"{job_id}_{pptx_file_id}_{ppt.filename}"
-    pptx_nfs_path = save_to_efs(ppt, pptx_filename, {"job_id": job_id, "file_id": pptx_file_id})
+@router.post("/job/submit")
+async def submit_job(job_data: dict):
+    """
+    Endpoint to handle job submission and trigger processing
+    """
+    try:
+        # Trigger Celery task for processing
+        process_uploaded_files.delay(job_data)
+        return {"status": "success", "message": "Job submitted successfully"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
-    video_infos = []
-    for vid in videos:
-        video_id = str(uuid.uuid4())
-        video_filename = f"{job_id}_{video_id}_{vid.filename}"
-        video_nfs_path = save_to_efs(vid, video_filename, {"job_id": job_id, "file_id": video_id})
-        video_infos.append({
-            "file_id": video_id,
-            "filename": vid.filename,
-            "nfs_path": video_nfs_path,
-        })
+@router.get("/health")
+async def health_check():
+    """
+    Health check endpoint
+    """
+    return {"status": "healthy"}
 
-    # 4. (Placeholder) Generate slide metadata—replace with real extraction later
-    slides = [
-        {"slide_id": i+1, "slide_number": i+1, "nfs_path": f"/nfs/slides/{job_id}_slide_{i+1}.png"}
-        for i in range(3)
-    ]
-
-    # 5. Return ALL real metadata for frontend tracking
-    return {
-        "job_id": job_id,
-        "pptx_file_id": pptx_file_id,
-        "pptx_filename": ppt.filename,
-        "pptx_nfs_path": pptx_nfs_path,
-        "videos": video_infos,
-        "tts_voice": voice,
-        "slides": slides,
-    }    
-
-@app.post("/job/submit")
-async def submit_job(request: Request):
-    data = await request.json()
-
-    job_id = hashlib.sha256(datetime.utcnow().isoformat().encode()).hexdigest()[:10]
-
-    publish_message({
-        "event": "process-sequence",
-        "job_id": job_id,
-        **data
-    })
-    print("Powerpoint uploaded and sent with selected voice {voice}...")
-    return {"job_id": job_id}
+# Include the router in the app
+app.include_router(router)
 
 @app.get("/")
 def get_form():

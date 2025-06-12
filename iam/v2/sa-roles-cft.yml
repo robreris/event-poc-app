@@ -98,7 +98,7 @@ Resources:
                 "Action": "sts:AssumeRoleWithWebIdentity",
                 "Condition": {
                   "StringLike": {
-                    "oidc.eks.${AWS::Region}.amazonaws.com/id/${OIDCId}:sub": "system:serviceaccount:kube-system:aws-alb-ingress-controller*",
+                    "oidc.eks.${AWS::Region}.amazonaws.com/id/${OIDCId}:sub": "system:serviceaccount:aws-elb-controller-namespace:aws-alb-ingress-controller*",
                     "oidc.eks.${AWS::Region}.amazonaws.com/id/${OIDCId}:aud": "sts.amazonaws.com"
                   }
                 }
@@ -294,5 +294,3 @@ Outputs:
     Value: !GetAtt ESORole.Arn
   ALBIngressRoleArn:
     Value: !GetAtt ALBIngressRole.Arn
-  ACKSSMRoleArn:
-    Value: !GetAtt ACKSSMRole.Arn

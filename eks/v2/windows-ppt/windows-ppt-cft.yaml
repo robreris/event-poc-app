@@ -10,10 +10,6 @@ Parameters:
     Type: String
     Default: t3.large
 
-  IamInstanceProfile:
-    Type: String
-    Description: Name of the instance profile for EC2
-
   SecurityGroupId:
     Type: AWS::EC2::SecurityGroup::Id
 
@@ -23,7 +19,51 @@ Parameters:
   SubnetId:
     Type: AWS::EC2::Subnet::Id
 
+  NFSDNS:
+    Type: String
+
+  ClusterName:
+    Type: String
+
 Resources:
+  RenderAgentRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${AWS::StackName}-RenderAgentRole"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ecs.amazonaws.com
+            Action: "sts:AssumeRole"
+      Path: /
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+      Policies:
+        - PolicyName: RenderAgentAppPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ssm:GetParameter
+                  - ssm:GetParameters
+                  - ssm:GetParametersByPath
+                Resource: "*"
+              - Effect: Allow
+                Action: 
+                  - ecs:DescribeInstances
+                Resource: "*"
+
+  RenderAgentInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      InstanceProfileName: !Sub "${AWS::StackName}-RenderAgentInstanceProfile"
+      Path: /
+      Roles:
+        - !Ref RenderAgentRole
   RenderLaunchTemplate:
     Type: AWS::EC2::LaunchTemplate
     Properties:
@@ -39,7 +79,7 @@ Resources:
             Groups:
               - !Ref SecurityGroupId
         IamInstanceProfile:
-          Name: !Ref IamInstanceProfile
+          Name: !Ref RenderAgentInstanceProfile
         UserData:
           Fn::Base64: !Sub |
             <powershell>
@@ -48,19 +88,22 @@ Resources:
             Remove-Item awscliv2.msi
 
             $region = "${AWS::Region}"
-            $rabbitmq = aws ssm get-parameter --name "/myapp/rabbitmq" --region $region --query 'Parameter.Value' --output text
-            $nfs = aws ssm get-parameter --name "/myapp/nfs" --region $region --query 'Parameter.Value' --output text
+            $rabbitmqhost = aws ssm get-parameter --name "/${ClusterName}/rabbithost" --region $region --query 'Parameter.Value' --output text
+            $rabbitmqusername = aws ssm get-parameter --name "/${ClusterName}/rabbitusername" --region $region --query 'Parameter.Value' --output text
+            $rabbitmqpassword = aws ssm get-parameter --name "/${ClusterName}/rabbitpassword" --region $region --query 'Parameter.Value' --output text
 
             Install-WindowsFeature NFS-Client
             pip install pika pywin32
 
-            New-Item -Path "Z:\" -ItemType Directory -Force
-            mount -o anon \\$nfs Z:
+            New-Item -Path \"Z:\" -ItemType Directory -Force
+            mount -o anon \\$NFSDNS Z:
 
-            [System.Environment]::SetEnvironmentVariable("RABBITMQ_HOST", $rabbitmq, "Machine")
+            [System.Environment]::SetEnvironmentVariable("RABBITMQ_HOST", $rabbitmqhost, "Machine")
+            [System.Environment]::SetEnvironmentVariable("RABBITMQ_USER", $rabbitmqusername, "Machine")
+            [System.Environment]::SetEnvironmentVariable("RABBITMQ_PASS", $rabbitmqpassword, "Machine")
 
             echo python C:\render-agent\agent.py > C:\render-agent\start.bat
-            schtasks /Create /TN "RenderAgent" /TR "C:\render-agent\start.bat" /SC ONSTART /RU SYSTEM /RL HIGHEST
+            schtasks /Create /TN "RenderAgent" /TR "C:\\render-agent\start.bat" /SC ONSTART /RU SYSTEM /RL HIGHEST
             </powershell>
 
   RenderAutoScalingGroup:

@@ -1,0 +1,66 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend-fastapi
+  namespace: event-poc
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: backend-fastapi
+  template:
+    metadata:
+      labels:
+        app: backend-fastapi
+    spec:
+      containers:
+      - name: backend-fastapi
+        image: 228122752878.dkr.ecr.us-east-1.amazonaws.com/event-driven-poc-backend-fastapi
+        ports:
+        - containerPort: 8000
+        volumeMounts:
+        - name: shared-artifacts
+          mountPath: /mnt/shared-artifacts
+        env:
+        - name: PYTHONUNBUFFERED
+          value: "1"
+        - name: RABBITMQ_HOST
+          value: "my-rabbit.rabbitmq-system"
+        - name: RABBITMQ_PORT
+          value: "5672"
+        - name: RABBITMQ_USER
+          valueFrom:
+            secretKeyRef:
+              name: my-rabbit-default-user
+              key: username
+        - name: RABBITMQ_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: my-rabbit-default-user
+              key: password
+        - name: NFS_MOUNT_POINT
+          value: "/mnt/shared-artifacts"
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "200m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+      volumes:
+      - name: shared-artifacts
+        persistentVolumeClaim:
+          claimName: shared-artifacts
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend-fastapi
+  namespace: event-poc
+spec:
+  selector:
+    app: backend-fastapi
+  ports:
+  - port: 80
+    targetPort: 8000
+  type: ClusterIP 
