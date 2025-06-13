@@ -25,6 +25,9 @@ kubectl create namespace $app_namespace
 eksctl utils associate-iam-oidc-provider --cluster event-driven-poc --approve
 OIDCId=$(aws eks describe-cluster --name $cluster_name --query "cluster.identity.oidc.issuer" --output text | cut -d'/' -f5)
 
+CLUSTER_INFO=$(eksctl get cluster --name "$cluster_name" --region "$AWS_DEFAULT_REGION" -o json)
+VPC_ID=$(echo "$CLUSTER_INFO" | jq -r '.[0].ResourcesVpcConfig.VpcId')
+
 aws cloudformation create-stack --stack-name eks-addon-roles   \
     --template-body file://./iam/${VERS}/sa-roles-cft.yml   \
     --parameters       \
@@ -114,6 +117,19 @@ helm upgrade --install external-secrets external-secrets/external-secrets \
   --namespace $app_namespace \
   --set controller.serviceAccount.create=false \
   --set controller.serviceAccount.name=external-secrets
+
+if [[ "${VERS}" == "v2" ]]; then
+  echo "Installing AWS load balancer controller helm chart..."
+  kubectl create namespace aws-elb-controller-namespace
+  helm install aws-load-balancer-controller eks/aws-load-balancer-controller  \
+    -n aws-elb-controller-namespace   \
+    --set clusterName=event-driven-poc   \
+    --set serviceAccount.create=false   \
+    --set serviceAccount.name=aws-alb-ingress-controller   \
+    --set region=$AWS_DEFAULT_REGION   \
+    --set setvpcId=$VPC_ID   \
+    --set image.repository=602401143452.dkr.ecr.us-east-1.amazonaws.com/amazon/aws-load-balancer-controller
+fi
 
 echo "📡 Installing RabbitMQ Operator..."
 kubectl create namespace rabbitmq-system

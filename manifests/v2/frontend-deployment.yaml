@@ -15,12 +15,14 @@ spec:
     spec:
       containers:
       - name: frontend-react
-        image: ${ECR_REGISTRY}/frontend-react:latest
+        image: 228122752878.dkr.ecr.us-east-1.amazonaws.com/event-driven-poc-frontend-react
         ports:
         - containerPort: 80
         env:
         - name: VITE_API_URL
           value: "http://backend-fastapi.event-poc.svc.cluster.local"
+        - name: BACKEND_URL
+          value: "http://backend-fastapi.event-poc.svc.cluster.local:8000" 
         resources:
           requests:
             memory: "128Mi"

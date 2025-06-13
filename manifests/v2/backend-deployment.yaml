@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
       - name: backend-fastapi
-        image: ${ECR_REGISTRY}/backend-fastapi:latest
+        image: 228122752878.dkr.ecr.us-east-1.amazonaws.com/event-driven-poc-backend-fastapi
         ports:
         - containerPort: 8000
         volumeMounts:
