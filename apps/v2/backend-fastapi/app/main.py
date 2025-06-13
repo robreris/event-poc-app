@@ -53,7 +53,8 @@ UPLOAD_DIR = os.path.join(NFS_MOUNT_POINT, "uploads")
 # Ensure upload directory exists
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
-processed_jobs: Dict[str, Dict[str, Any]] = {}
+# Store for processed slides from Windows component
+windows_processed_jobs: Dict[str, Dict[str, Any]] = {}
 
 def handle_windows_response(ch, method, properties, body):
     """
@@ -63,13 +64,13 @@ def handle_windows_response(ch, method, properties, body):
         data = json.loads(body)
         job_id = data.get("job_id")
         if job_id:
-            processed_jobs[job_id] = {
+            windows_processed_jobs[job_id] = {
                 "slides": data.get("slides", []),
                 "videos": data.get("videos", []),
                 "ready": True
             }
             print(f"Received processed data for job {job_id}")
-    except: Exception as e:
+    except Exception as e:
         print(f"Error processing Windows component response: {str(e)}")
 
 def get_rabbitmq_credentials():
@@ -115,6 +116,7 @@ def process_uploaded_files(job_data):
 
 @app.on_event("startup")
 async def startup_event():
+    # Start RabbitMQ listener for Windows component responses
     asyncio.create_task(rabbitmq_listener(queue="windows_response", callback=handle_windows_response))
 
 @router.get("/debug-ready")
@@ -124,11 +126,22 @@ async def debug_ready():
 @router.get("/check-download/{file_id}")
 async def check_download(file_id: str):
     print(f"check-download called for file_id: {file_id}")
-    if file_id in processed_jobs:
+    if file_id in state.ready_downloads:
+        return JSONResponse(content={"ready": True, "download_url": f"/download/{file_id}"})
+    else:
+        return JSONResponse(content={"ready": False})
+
+@router.get("/check-windows-processing/{job_id}")
+async def check_windows_processing(job_id: str):
+    """
+    Check if Windows component has finished processing the job
+    """
+    print(f"check-windows-processing called for job_id: {job_id}")
+    if job_id in windows_processed_jobs:
         return JSONResponse(content={
             "ready": True,
-            "slides": processed_jobs[file_id].get("slides", []),
-            "videos": processed_jobs[file_id].get("videos", [])
+            "slides": windows_processed_jobs[job_id].get("slides", []),
+            "videos": windows_processed_jobs[job_id].get("videos", [])
         })
     else:
         return JSONResponse(content={"ready": False})
@@ -214,6 +227,7 @@ async def health_check():
     """
     return {"status": "healthy"}
 
+# Include the router in the app
 app.include_router(router)
 
 @app.get("/")
