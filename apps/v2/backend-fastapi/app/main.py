@@ -4,7 +4,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from app.storage import save_to_efs, save_bumper_to_efs
 from app.rabbitmq import publish_message, rabbitmq_listener
 from app.state import state
-from typing import List
+from typing import List, Dict, Any
 import uuid
 import os
 from datetime import datetime
@@ -26,7 +26,7 @@ from .config import (
 )
 
 app = FastAPI()
-router = APIRouter()
+router = APIRouter(prefix="/api")
 #app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # Configure CORS
@@ -52,6 +52,25 @@ UPLOAD_DIR = os.path.join(NFS_MOUNT_POINT, "uploads")
 
 # Ensure upload directory exists
 os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+processed_jobs: Dict[str, Dict[str, Any]] = {}
+
+def handle_windows_response(ch, method, properties, body):
+    """
+    Handle response from Windows component
+    """
+    try:
+        data = json.loads(body)
+        job_id = data.get("job_id")
+        if job_id:
+            processed_jobs[job_id] = {
+                "slides": data.get("slides", []),
+                "videos": data.get("videos", []),
+                "ready": True
+            }
+            print(f"Received processed data for job {job_id}")
+    except: Exception as e:
+        print(f"Error processing Windows component response: {str(e)}")
 
 def get_rabbitmq_credentials():
     """
@@ -96,29 +115,32 @@ def process_uploaded_files(job_data):
 
 @app.on_event("startup")
 async def startup_event():
-    # asyncio.create_task(rabbitmq_listener())
-    pass
+    asyncio.create_task(rabbitmq_listener(queue="windows_response", callback=handle_windows_response))
 
-@app.get("/debug-ready")
+@router.get("/debug-ready")
 async def debug_ready():
     return state.ready_downloads
 
-@app.get("/check-download/{file_id}")
+@router.get("/check-download/{file_id}")
 async def check_download(file_id: str):
     print(f"check-download called for file_id: {file_id}")
-    if file_id in state.ready_downloads:
-        return JSONResponse(content={"ready": True, "download_url": f"/download/{file_id}"})
+    if file_id in processed_jobs:
+        return JSONResponse(content={
+            "ready": True,
+            "slides": processed_jobs[file_id].get("slides", []),
+            "videos": processed_jobs[file_id].get("videos", [])
+        })
     else:
         return JSONResponse(content={"ready": False})
 
-@app.get("/download/{file_id}")
+@router.get("/download/{file_id}")
 async def download_file(file_id: str):
     file_path = state.ready_downloads.get(file_id)
     if not file_path:
         return {"error": "File not ready yet"}
     return FileResponse(file_path, filename=os.path.basename(file_path))
 
-@app.post("/upload")
+@router.post("/upload")
 async def upload_files(
     ppt: UploadFile = File(...),
     videos: List[UploadFile] = File([]),
@@ -173,7 +195,7 @@ async def upload_files(
         print(f"Error in upload_files: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/job/submit")
+@router.post("/job/submit")
 async def submit_job(job_data: dict):
     """
     Endpoint to handle job submission and trigger processing
@@ -185,12 +207,14 @@ async def submit_job(job_data: dict):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/health")
+@router.get("/health")
 async def health_check():
     """
     Health check endpoint
     """
     return {"status": "healthy"}
+
+app.include_router(router)
 
 @app.get("/")
 def get_form():

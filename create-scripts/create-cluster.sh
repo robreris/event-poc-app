@@ -129,6 +129,11 @@ if [[ "${VERS}" == "v2" ]]; then
     --set region=$AWS_DEFAULT_REGION   \
     --set setvpcId=$VPC_ID   \
     --set image.repository=602401143452.dkr.ecr.us-east-1.amazonaws.com/amazon/aws-load-balancer-controller
+  kubectl wait deployment aws-load-balancer-controller \
+    -n aws-elb-controller-namespace \
+    --for=condition=Available=true \
+    --timeout=120s
+  sleep 15
 fi
 
 echo "📡 Installing RabbitMQ Operator..."
