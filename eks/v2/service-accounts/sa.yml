@@ -21,3 +21,11 @@ metadata:
   namespace: aws-elb-controller-namespace
   annotations:
     eks.amazonaws.com/role-arn: arn:aws:iam::228122752878:role/event-driven-poc-alb-ingress
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: frontend-s3-sa
+  namespace: event-poc
+  annotations:
+    eks.amazonaws.com/role-arn: arn:aws:iam::228122752878:role/event-driven-poc-frontend-s3-role

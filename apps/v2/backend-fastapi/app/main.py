@@ -1,7 +1,7 @@
 from fastapi import FastAPI, UploadFile, File, Form, Request, APIRouter, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
-from app.storage import save_to_efs, save_bumper_to_efs
+from app.storage import save_to_efs, save_bumper_to_efs, generate_presigned_url
 from app.rabbitmq import publish_message, rabbitmq_listener
 from app.state import state
 from typing import List, Dict, Any
@@ -22,7 +22,8 @@ from .config import (
     RABBITMQ_PORT,
     RABBITMQ_USER,
     RABBITMQ_PASSWORD,
-    NFS_MOUNT_POINT
+    NFS_MOUNT_POINT,
+    S3_BUCKET
 )
 
 app = FastAPI()
@@ -226,6 +227,44 @@ async def health_check():
     Health check endpoint
     """
     return {"status": "healthy"}
+
+@router.post("/s3-presign")
+async def s3_presign(filename: str, content_type: str):
+    """
+    Generate a pre-signed S3 upload URL for the given filename and content type.
+    """
+    key = f"uploads/{uuid.uuid4()}_{filename}"
+    url = generate_presigned_url(key, content_type)
+    if not url:
+        raise HTTPException(status_code=500, detail="Failed to generate presigned URL")
+    return {"url": url, "key": key, "bucket": S3_BUCKET}
+
+@router.post("/notify-upload")
+async def notify_upload(payload: dict):
+    """
+    Notify backend that upload to S3 is complete. Payload should include job_id, s3_key, filename, tts_voice, and any other metadata.
+    Sends a RabbitMQ message to the Windows component with the S3 key and metadata.
+    """
+    try:
+        job_id = payload.get("job_id") or str(uuid.uuid4())
+        s3_key = payload["s3_key"]
+        filename = payload["filename"]
+        tts_voice = payload.get("tts_voice", "")
+        videos = payload.get("videos", [])
+        # Prepare message for Windows component
+        message = {
+            "job_id": job_id,
+            "pptx_file_id": filename,
+            "pptx_s3_key": s3_key,
+            "tts_voice": tts_voice,
+            "videos": videos,
+            "slides": []
+        }
+        publish_message(message, queue="file_processing")
+        return {"status": "success", "job_id": job_id}
+    except Exception as e:
+        print(f"Error in notify_upload: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 # Include the router in the app
 app.include_router(router)

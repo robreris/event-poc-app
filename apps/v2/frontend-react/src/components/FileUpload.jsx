@@ -51,17 +51,19 @@ export default function FileUpload({ onUploadComplete }) {
     setStatus("Uploading...");
     setUploadProgress(0);
 
-    const formData = new FormData();
-    formData.append("ppt", pptFile);
-    videoFiles.filter(Boolean).forEach((file) => {
-      formData.append("videos", file);
-    });
-    formData.append("voice", ttsVoice);
-
     try {
-      console.log("Uploading to:", `${API_URL}/upload`);
-      const response = await axios.post(`${API_URL}/upload`, formData, {
-        headers: { "Content-Type": "multipart/form-data" },
+      // 1. Request a pre-signed S3 URL from the backend
+      const presignRes = await axios.post(`${API_URL}/s3-presign`, {
+        filename: pptFile.name,
+        content_type: pptFile.type || "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+      });
+      const { url, key, bucket } = presignRes.data;
+
+      // 2. Upload the file directly to S3
+      await axios.put(url, pptFile, {
+        headers: {
+          "Content-Type": pptFile.type || "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+        },
         onUploadProgress: (progressEvent) => {
           const percentCompleted = Math.round(
             (progressEvent.loaded * 100) / progressEvent.total
@@ -70,10 +72,21 @@ export default function FileUpload({ onUploadComplete }) {
         },
       });
 
-      console.log("Upload response:", response.data);
+      // 3. Notify the backend that the upload is complete
+      const notifyRes = await axios.post(`${API_URL}/notify-upload`, {
+        s3_key: key,
+        filename: pptFile.name,
+        tts_voice: ttsVoice,
+        // videos: [] // Add video S3 keys here if/when implemented
+      });
+
       setStatus("✅ Uploaded!");
       if (onUploadComplete) {
-        onUploadComplete(response.data);
+        onUploadComplete({
+          ...notifyRes.data,
+          pptx_file_id: pptFile.name,
+          pptx_s3_key: key,
+        });
       }
     } catch (err) {
       console.error("Upload error:", err);
