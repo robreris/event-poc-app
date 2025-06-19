@@ -5,23 +5,17 @@ Parameters:
   AmiId:
     Type: AWS::EC2::Image::Id
     Description: Pre-baked Windows AMI with PowerPoint and agent.py
-
   InstanceType:
     Type: String
     Default: t3.large
-
   SecurityGroupId:
     Type: AWS::EC2::SecurityGroup::Id
-
   KeyName:
     Type: AWS::EC2::KeyPair::KeyName
-
   SubnetId:
     Type: AWS::EC2::Subnet::Id
-
-  NFSDNS:
+  EFSFileSystemId:
     Type: String
-
   ClusterName:
     Type: String
 
@@ -83,27 +77,74 @@ Resources:
         UserData:
           Fn::Base64: !Sub |
             <powershell>
+            # Install AWS CLI v2
             Invoke-WebRequest -Uri https://awscli.amazonaws.com/AWSCLIV2.msi -OutFile awscliv2.msi
             Start-Process msiexec.exe -ArgumentList '/i awscliv2.msi /quiet' -Wait
             Remove-Item awscliv2.msi
 
+            # Install latest python for Windows
+            $pythonInstaller = "python-installer.exe"
+            Invoke-WebRequest -Uri "https://www.python.org/ftp/python/3.12.3/python-3.12.3-amd64.exe" -OutFile $pythonInstaller
+            Start-Process .\$pythonInstaller -ArgumentList '/quiet InstallAllUsers=1 PrependPath=1' -Wait
+            Remove-Item $pythonInstaller
+            $env:Path += ";C:\Program Files\Python312\Scripts"
+            pip install pika pywin32
+      
+            # Download Office Deployment Tool (ODT) to C:\odt
+            New-Item -Path "C:\odt" -ItemType Directory -Force | Out-Null
+            Invoke-WebRequest -Uri "https://download.microsoft.com/download/6c1eeb25-cf8b-41d9-8d0d-cc1dbc032140/officedeploymenttool_18827-20140.exe" -OutFile "C:\odt\OfficeDeploymentTool.exe"
+            Start-Process "C:\odt\OfficeDeploymentTool.exe" -ArgumentList "/extract:C:\odt /quiet" -Wait
+
+            # custom xml configuration for ODT
+            $odtConfig = @"
+            <Configuration>
+              <Add OfficeClientEdition="64" Channel="MonthlyEnterprise">
+                <Product ID="O365BusinessRetail">
+                  <Language ID="en-us" />
+                  <ExcludeApp ID="Access"/>
+                  <ExcludeApp ID="Excel"/>
+                  <ExcludeApp ID="OneNote"/>
+                  <ExcludeApp ID="Outlook"/>
+                  <ExcludeApp ID="Publisher"/>
+                  <ExcludeApp ID="Teams"/>
+                  <ExcludeApp ID="Word"/>
+                </Product>
+              </Add>
+              <Display Level="None" AcceptEULA="TRUE"/>
+              <Property Name="AUTOACTIVATE" Value="1"/>
+            </Configuration>
+            "@
+            $odtConfig | Out-File -FilePath "C:\odt\config.xml" -Encoding UTF8     
+
+            # Run ODT to install just PowerPoint
+            Start-Process "C:\odt\setup.exe" -ArgumentList "/configure C:\odt\config.xml" -Wait
+
+            # Mount NFS share to Z:
+            Install-WindowsFeature NFS-Client
+            New-Item -Path "Z:\" -ItemType Directory -Force | Out-Null
+            $efsDns = "${EFSFileSystemId}.efs.${AWS::Region}.amazonaws.com"
+            mount -o anon \\$efsDns\ Z:
+
+            # Set up RabbitMQ
             $region = "${AWS::Region}"
             $rabbitmqhost = aws ssm get-parameter --name "/${ClusterName}/rabbithost" --region $region --query 'Parameter.Value' --output text
             $rabbitmqusername = aws ssm get-parameter --name "/${ClusterName}/rabbitusername" --region $region --query 'Parameter.Value' --output text
             $rabbitmqpassword = aws ssm get-parameter --name "/${ClusterName}/rabbitpassword" --region $region --query 'Parameter.Value' --output text
 
-            Install-WindowsFeature NFS-Client
-            pip install pika pywin32
-
-            New-Item -Path \"Z:\" -ItemType Directory -Force
-            mount -o anon \\$NFSDNS Z:
-
             [System.Environment]::SetEnvironmentVariable("RABBITMQ_HOST", $rabbitmqhost, "Machine")
             [System.Environment]::SetEnvironmentVariable("RABBITMQ_USER", $rabbitmqusername, "Machine")
             [System.Environment]::SetEnvironmentVariable("RABBITMQ_PASS", $rabbitmqpassword, "Machine")
 
-            echo python C:\render-agent\agent.py > C:\render-agent\start.bat
-            schtasks /Create /TN "RenderAgent" /TR "C:\\render-agent\start.bat" /SC ONSTART /RU SYSTEM /RL HIGHEST
+            # Prepare working directory for agent and download agent.py from GitHub
+            New-Item -Path "C:\render-agent" -ItemType Directory -Force | Out-Null
+            Invoke-WebRequest -Uri "https://raw.githubusercontent.com/robreris/event-poc-app/refs/heads/main/eks/v2/windows-ppt/windows-agent-setup.py" -OutFile "C:\render-agent\agent.py"
+
+            # Create start.bat to run agent.py
+            "python C:\render-agent\agent.py" | Out-File -FilePath "C:\render-agent\start.bat" -Encoding ASCII
+
+            # Schedule task to run agent on system startup
+            schtasks /Create /TN "RenderAgent" /TR "C:\render-agent\start.bat" /SC ONSTART /RU SYSTEM /RL HIGHEST
+
             </powershell>
 
   RenderAutoScalingGroup:

@@ -16,6 +16,13 @@ spec:
       containers:
       - name: backend-fastapi
         image: 228122752878.dkr.ecr.us-east-1.amazonaws.com/event-driven-poc-backend-fastapi
+        command: ["/bin/bash", "-c"]
+        args: 
+          - |
+            source /opt/conda/etc/profile.d/conda.sh
+            conda activate pptx_extractor_env && \
+            echo "Starting celery..." && \
+            celery -A tasks worker --loglevel=info -Q ppt_tasks
         ports:
         - containerPort: 8000
         volumeMounts:
@@ -25,7 +32,7 @@ spec:
         - name: PYTHONUNBUFFERED
           value: "1"
         - name: RABBITMQ_HOST
-          value: "my-rabbit.rabbitmq-system"
+          value: "my-rabbit-nodes.default.svc.cluster.local"
         - name: RABBITMQ_PORT
           value: "5672"
         - name: RABBITMQ_USER

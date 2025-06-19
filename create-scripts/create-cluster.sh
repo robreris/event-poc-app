@@ -7,7 +7,7 @@ AWS_ACCT="228122752878"
 cluster_name="event-driven-poc"
 app_namespace="event-poc"
 export AWS_DEFAULT_REGION=us-east-1
-windows_ami="ami-026507e2ccc32f737"
+windows_ami="ami-02b60b5095d1e5227"   # Latest windows base 2025
 key_name="fgt-kp"
 ###############################################################
 
@@ -229,17 +229,17 @@ if [[ "${VERS}" == "v2" ]]; then
     --type "SecureString" \
     --overwrite
 
-  aws cloudformation create-stack --stack-name $app_namespace-windows-ra-ec2 \
-      --template-body file://./eks/${VERS}/windows-ppt/windows-ppt-cft.yaml  \
-      --parameters       \
-          ParameterKey=AmiId,ParameterValue=$windows_ami       \
-          ParameterKey=SecurityGroupId,ParameterValue=$SG_ID   \
-          ParameterKey=SubnetId,ParameterValue=$SUBNET_ID_1 \
-          ParameterKey=KeyName,ParameterValue=$key_name \
-          ParameterKey=NFSDNS,ParameterValue=$rabbitmqnlbdns \
-          ParameterKey=ClusterName,ParameterValue=$cluster_name \
-      --capabilities CAPABILITY_NAMED_IAM   \
-      --region $AWS_DEFAULT_REGION
+#  aws cloudformation create-stack --stack-name $app_namespace-windows-ra-ec2 \
+#      --template-body file://./eks/${VERS}/windows-ppt/windows-ppt-cft.yaml  \
+#      --parameters       \
+#          ParameterKey=AmiId,ParameterValue=$windows_ami       \
+#          ParameterKey=SecurityGroupId,ParameterValue=$SG_ID   \
+#          ParameterKey=SubnetId,ParameterValue=$SUBNET_ID_1 \
+#          ParameterKey=KeyName,ParameterValue=$key_name \
+#          ParameterKey=NFSDNS,ParameterValue=$rabbitmqnlbdns \
+#          ParameterKey=ClusterName,ParameterValue=$cluster_name \
+#      --capabilities CAPABILITY_NAMED_IAM   \
+#      --region $AWS_DEFAULT_REGION
 fi
 
 echo "Copying rabbitmq secrets to app namespace:"
@@ -247,11 +247,12 @@ echo "📁 Creating app namespace..."
 kubectl create secret generic my-rabbit-default-user \
   --from-literal=username="$rabbitusername" \
   --from-literal=password="$rabbitpassword" \
+  --from-literal=hostdns="$rabbitmqnlbdns" \
   -n $app_namespace
 
 echo "Updating manifest namespaces..."
 sed -i "s/namespace:.*/namespace: $app_namespace/" manifests/${VERS}/*
-echo "RabbitMQ UI can be acccessed here: $rabbitmqdns"
+echo "RabbitMQ UI can be acccessed here: http://$rabbitmqnlbdns"
 echo "RabbitMQ Username: $rabbitusername"
 echo "RabbitMQ Password: $rabbitpassword"
 echo ""
