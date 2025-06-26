@@ -15,10 +15,6 @@ key_name="fgt-kp"
 
 VERS=$1
 
-#EFSCSIRoleArn=
-#ESORoleArn=
-#ALBIngressRoleArn=
-
 #===================#
 # Usage Check       #
 #===================#
@@ -38,18 +34,19 @@ create_cluster() {
   eksctl create cluster -f eks/${VERS}/event-poc-cluster.yaml
   kubectl create namespace $app_namespace
   kubectl create namespace $elb_controller_namespace
+  get_cluster_info
 }
 
 #===================#
 # Get Cluster Info  #
 #===================#
 get_cluster_info() {
-  CLUSTER_INFO=$(eksctl get cluster --name "$cluster_name" --region "$AWS_DEFAULT_REGION" -o json)
-  VPC_ID=$(echo "$CLUSTER_INFO" | jq -r '.[0].ResourcesVpcConfig.VpcId')
-  SUBNET_IDS=$(echo "$CLUSTER_INFO" | jq -r '.[0].ResourcesVpcConfig.SubnetIds[]' | head -n 2)
-  SUBNET_ID_1=$(echo "$SUBNET_IDS" | sed -n '1p')
-  SUBNET_ID_2=$(echo "$SUBNET_IDS" | sed -n '2p')
-  SG_ID=$(aws ec2 describe-instances --filters "Name=tag:eks:cluster-name,Values=$cluster_name" --query 'Reservations[*].Instances[*].SecurityGroups[*].GroupId' --output text | uniq)
+  declare -g CLUSTER_INFO=$(eksctl get cluster --name "$cluster_name" --region "$AWS_DEFAULT_REGION" -o json)
+  declare -g VPC_ID=$(echo "$CLUSTER_INFO" | jq -r '.[0].ResourcesVpcConfig.VpcId')
+  declare -g SUBNET_IDS=$(echo "$CLUSTER_INFO" | jq -r '.[0].ResourcesVpcConfig.SubnetIds[]' | head -n 2)
+  declare -g SUBNET_ID_1=$(echo "$SUBNET_IDS" | sed -n '1p')
+  declare -g SUBNET_ID_2=$(echo "$SUBNET_IDS" | sed -n '2p')
+  declare -g SG_ID=$(aws ec2 describe-instances --filters "Name=tag:eks:cluster-name,Values=$cluster_name" --query 'Reservations[*].Instances[*].SecurityGroups[*].GroupId' --output text | uniq)
   echo "#### Cluster VPC Info ###"
   echo "VPC Id: $VPC_ID"
   echo "Subnet ID 1: $SUBNET_ID_1"
@@ -63,7 +60,7 @@ get_cluster_info() {
 #===================#
 setup_oidc_and_roles() {
   eksctl utils associate-iam-oidc-provider --cluster "$cluster_name" --approve
-  OIDCId=$(aws eks describe-cluster --name $cluster_name --query "cluster.identity.oidc.issuer" --output text | cut -d'/' -f5)
+  get_oidc_id
 
   aws cloudformation create-stack --stack-name eks-addon-roles \
     --template-body file://./iam/${VERS}/sa-roles-cft.yml \
@@ -83,7 +80,7 @@ setup_oidc_and_roles() {
 # Retrieve OIDC ID    #
 #=====================#
 get_oidc_id() {
-  OIDCId=$(aws eks describe-cluster --name $cluster_name --query "cluster.identity.oidc.issuer" --output text | cut -d'/' -f5)
+  declare -g OIDCId=$(aws eks describe-cluster --name $cluster_name --query "cluster.identity.oidc.issuer" --output text | cut -d'/' -f5)
   if [[ "$OIDCId" == "" ]]; then
     echo "OIDC Id not found."
   else 
@@ -150,7 +147,7 @@ setup_efs() {
 
   echo "⏳  Waiting for EFS..."
   for i in {1..30}; do
-    EFS_ID=$(aws efs describe-file-systems --query "FileSystems[?Tags[?Key=='Name' && Value=='$cluster_name-efs']].FileSystemId" --output text)
+    declare -g EFS_ID=$(aws efs describe-file-systems --query "FileSystems[?Tags[?Key=='Name' && Value=='$cluster_name-efs']].FileSystemId" --output text)
     if [[ -n "$EFS_ID" ]]; then break; fi
     echo "🔄 Waiting... ($i/30)"
     sleep 10
@@ -211,7 +208,7 @@ install_lb_controller() {
   sleep 10
 
   helm install aws-load-balancer-controller eks/aws-load-balancer-controller \
-    -n $elb_controller_namespace
+    -n $elb_controller_namespace \
     --set clusterName=$cluster_name \
     --set serviceAccount.create=false \
     --set serviceAccount.name=aws-alb-ingress-controller \
@@ -252,11 +249,9 @@ install_rabbitmq() {
     exit 1
   fi
 
-  rabbitmqnlbdns="http://$rabbit_host:15672"
+  get_rabbit_info
   echo "🌐 RabbitMQ URL: $rabbitmqnlbdns"
 
-  rabbitusername=$(kubectl get secret my-rabbit-default-user -o jsonpath="{.data.username}" | base64 --decode)
-  rabbitpassword=$(kubectl get secret my-rabbit-default-user -o jsonpath="{.data.password}" | base64 --decode)
 
   if [[ "${VERS}" == "v2" ]]; then
     aws ssm put-parameter --name "/$cluster_name/rabbithost" --value "/$rabbitmqnlbdns" --type "SecureString" --overwrite
@@ -341,31 +336,33 @@ create_windows_component() {
 # Execution Control   #
 #=====================#
 main() {
+
+  # set up cluster
   check_args "$@"
   #create_cluster
   get_cluster_info
 
   #setup_oidc_and_roles
-  #get_oidc_id
-
-  #extract_iam_roles
+  get_oidc_id
+  extract_iam_roles
   #configure_service_accounts
-  #setup_efs
-  #get_efs_id
 
+  #setup_efs
+  get_efs_id
   #setup_external_secrets
 
   #if [[ "${VERS}" == "v2" ]]; then
-    #install_lb_controller
+  #  install_lb_controller
+  #fi
+  #install_rabbitmq
+  #if [[ "${VERS}" == "v2" ]]; then
+  #  create_windows_component
   #fi
 
-  #install_rabbitmq
+
+
+
   get_rabbit_info
-
-  if [[ "${VERS}" == "v2" ]]; then
-    create_windows_component
-  fi
-
 }
 
 main "$@"
