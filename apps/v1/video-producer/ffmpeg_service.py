@@ -86,7 +86,34 @@ def produce_video(job_id, file_id):
                 '-avoid_negative_ts', 'make_zero',
                 str(output_audio)
             ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    
+
+    def trim_audio(input_audio, output_audio, duration):
+        subprocess.run([
+            'ffmpeg', '-y', '-i', str(input_audio),
+            '-t', f"{duration:.3f}", str(output_audio)
+        ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+    def concat_with_filter_complex(segment_paths, output_path):
+        filter_complex = ''.join([f'[{i}:v][{i}:a]' for i in range(len(segment_paths))])
+        filter_complex += f'concat=n={len(segment_paths)}:v=1:a=1[v][a]'
+        cmd = ['ffmpeg', '-y']
+        for seg in segment_paths:
+            cmd += ['-i', str(seg)]
+        cmd += [
+            '-filter_complex', filter_complex,
+            '-map', '[v]', '-map', '[a]',
+            '-c:v', 'libx264', '-preset', 'fast',
+            '-c:a', 'aac', '-b:a', '192k',
+            '-pix_fmt', 'yuv420p', '-movflags', '+faststart',
+            '-progress', 'pipe:1', '-nostats',
+            str(output_path)
+        ]
+        print(f"Running ffmpeg concat with filter_complex...")
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        for line in proc.stdout:
+            print(line.strip())
+        proc.wait()
+ 
     image_files = {img.stem: img for img in image_dir.glob("*") if img.suffix.lower() in [".png", ".jpg", ".jpeg"]}
     audio_files = {aud.stem: aud for aud in audio_dir.glob("*") if aud.suffix.lower() in [".mp3", ".mp4", ".wav"]}
     common_keys = sorted(set(image_files.keys()) & set(audio_files.keys()))
@@ -109,17 +136,29 @@ def produce_video(job_id, file_id):
 
         print(f"Getting audio duration...")
         duration = get_audio_duration(cbr_audio)
+        
+        trimmed_audio = output_dir / f"audio_trimmed_{idx:03d}.mp3"
+        trim_audio(cbr_audio, trimmed_audio, duration)
 
         print(f"Running subprocess...")
         subprocess.run([
             'ffmpeg', '-y', '-loop', '1', '-i', str(image),
-            '-i', str(cbr_audio),
-            '-vf', 'scale=trunc(iw/2)*2:trunc(ih/2)*2',
-            '-c:v', 'libx264', '-tune', 'stillimage', '-shortest',
-            '-c:a', 'aac', '-b:a', '192k',
-            '-pix_fmt', 'yuv420p', '-movflags', '+faststart',
-            '-t', str(duration), str(video_path)
+            '-i', str(trimmed_audio),
+            '-vf', 'scale=1920:1080,setsar=1:1,format=yuv420p',
+            '-r', '30',
+            '-c:v', 'libx264', '-preset', 'fast', '-tune', 'stillimage', '-shortest',
+            '-c:a', 'aac', '-b:a', '192k', '-ar', '48000', '-ac', '2',
+            '-t', f"{duration:.3f}", str(video_path)
         ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+       # subprocess.run([
+       #     'ffmpeg', '-y', '-loop', '1', '-i', str(image),
+       #     '-i', str(trimmed_audio),
+       #     '-vf', 'scale=trunc(iw/2)*2:trunc(ih/2)*2',
+       #     '-c:v', 'libx264', '-tune', 'stillimage', '-shortest',
+       #     '-c:a', 'aac', '-b:a', '192k',
+       #     '-pix_fmt', 'yuv420p', '-movflags', '+faststart',
+       #     '-t', f"{duration:.3f}", str(video_path)
+       # ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
         # Re-encode
         print(f"Re-encoding...")
@@ -139,12 +178,18 @@ def produce_video(job_id, file_id):
             f.write(f"file '{bumper_path_out}'\n")
 
     print(f"Starting concatenation...")
-    subprocess.run([
-        'ffmpeg', '-y', '-f', 'concat', '-safe', '0', '-i', str(filelist_path),
-        '-c:v', 'libx264', '-preset', 'fast',
-        '-c:a', 'aac', '-b:a', '192k', str(final_output)
-    ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-
+    # Gather list of segments to concatenate, in the right order
+    segments = []
+    if bumper_path_in.exists():
+        segments.append(str(bumper_path_in))
+    for idx in range(1, len(common_keys) + 1):
+        seg_path = temp_adj_dir / f"output_{idx:03d}.mp4"
+        if seg_path.exists():
+            segments.append(str(seg_path))
+    if bumper_path_out.exists():
+        segments.append(str(bumper_path_out))
+    
+    concat_with_filter_complex(segments, final_output)
 
     async def send_download_ready_message(file_path, job_id, file_id):
         try:
