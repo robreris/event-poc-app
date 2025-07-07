@@ -4,7 +4,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from app.storage import save_to_efs, save_bumper_to_efs
 from app.rabbitmq import publish_message, rabbitmq_listener
 from app.state import state
-import uuid
+import uuid, json
 import os
 from datetime import datetime
 import hashlib
@@ -41,10 +41,17 @@ async def upload_files(
      ppt: UploadFile = File(...),
      bumper1: UploadFile = File(...),
      bumper2: UploadFile = File(...),
-     voice: str = Form(...)
+     voice: str = Form(...),
+     tts_engine: str = Form(...),
+     piperParams: str = Form(None),
 ):
     file_id = str(uuid.uuid4())
     job_id = hashlib.sha256(datetime.utcnow().isoformat().encode()).hexdigest()[:10]
+
+    if piperParams:
+        piper_args = json.loads(piperParams)
+    else:
+        piper_args = [1.25, 0.7, 1.15]        # set defaults
 
     metadata = {
         "event": "ppt-uploaded",
@@ -54,6 +61,8 @@ async def upload_files(
         "file_id": file_id,
         "job_id": job_id,
         "voice": voice,
+        "tts_engine": tts_engine,
+        "piper_args": piper_args
     }
 
     metadata["file_path"] = save_to_efs(ppt, ppt.filename, metadata)
@@ -61,7 +70,7 @@ async def upload_files(
     save_bumper_to_efs(bumper2, f"{job_id}-bumper2.mp4")
 
     publish_message(metadata)
-    print("Powerpoint uploaded and sent with selected voice {voice}...")
+    print("Powerpoint uploaded and sent with selected voice {voice} and engine {tts_engine}...")
     return {"status": "ok", "file_id": file_id, "file_name":ppt.filename}
 
 @app.get("/")

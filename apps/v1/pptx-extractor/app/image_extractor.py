@@ -2,6 +2,14 @@ import subprocess
 import shlex
 from pathlib import Path
 from pdf2image import convert_from_path
+import os
+
+
+RES_WIDTH = int(os.getenv("RES_WIDTH", "1280"))
+RES_HEIGHT = int(os.getenv("RES_HEIGHT", "720"))
+
+SLIDE_WIDTH_IN = float(os.getenv("SLIDE_WIDTH_INCHES", "13.333"))
+DPI = int(round(RES_WIDTH / 13.333))
 
 def convert_pptx_to_images(pptx_path: Path, output_dir: Path, image_format="png"):
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -28,7 +36,7 @@ def convert_pptx_to_images(pptx_path: Path, output_dir: Path, image_format="png"
         raise FileNotFoundError(f"Expected PDF not found at {pdf_path}")
 
     # Step 2: Convert PDF to images
-    images = convert_from_path(str(pdf_path))
+    images = convert_from_path(str(pdf_path), dpi=DPI)
     print(f"✅ {len(images)} slides extracted from PDF")
 
     for i, img in enumerate(images, start=1):

@@ -29,8 +29,6 @@ spec:
         - name: shared-artifacts
           mountPath: /artifacts
         env:
-        - name: RABBITMQ_HOST
-          value: "my-rabbit-nodes.default.svc.cluster.local"
         - name: SPEECH_KEY
           valueFrom:
             secretKeyRef:
@@ -41,6 +39,10 @@ spec:
             secretKeyRef:
               name: azure-speech-secret
               key: SPEECH_REGION
+        - name: PIPER_BINARY
+          value: "/root/.local/share/piper/piper"
+        - name: RABBITMQ_HOST
+          value: "my-rabbit-nodes.default.svc.cluster.local"
         - name: RABBIT_USERNAME
           valueFrom:
             secretKeyRef:

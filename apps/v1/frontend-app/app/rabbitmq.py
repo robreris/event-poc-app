@@ -28,7 +28,7 @@ def publish_message(data: dict):
     The task must be registered as @celery_app.task in the worker side.
     """
     task_name = "tasks.process_pptx"  # must match your worker task name
-    args = [data["file_path"], data["filename"], data["file_id"], data["job_id"], data["voice"]]  # match task signature
+    args = [data["file_path"], data["filename"], data["file_id"], data["job_id"], data["voice"], data["tts_engine"], data["piper_args"]]  # match task signature
 
     result = celery_app.send_task(
         name=task_name,

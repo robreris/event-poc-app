@@ -33,7 +33,13 @@ spec:
           valueFrom:
             secretKeyRef:
               name: my-rabbit-default-user
-              key: password      
+              key: password
+        - name: RES_WIDTH
+          value: "1280"
+        - name: RES_HEIGHT
+          value: "720" 
+        - name: FPS
+          value: "30"
       volumes:
       - name: shared-artifacts
         persistentVolumeClaim:

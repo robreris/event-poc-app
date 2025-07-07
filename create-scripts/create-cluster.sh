@@ -11,6 +11,7 @@ cluster_name="event-driven-poc"
 app_namespace="event-poc"
 elb_controller_namespace="aws-elb-controller-namespace"
 windows_ami="ami-02b60b5095d1e5227"
+windows_script_url="https://raw.githubusercontent.com/robreris/event-poc-app/refs/heads/main/eks/v2/windows-ppt/windows-userdata.ps1"
 key_name="fgt-kp"
 
 VERS=$1
@@ -236,25 +237,25 @@ install_rabbitmq() {
 
   echo "Creating rabbitmq cluster..."
   kubectl apply -f rabbitmq/${VERS}/rabbitmq-cluster.yaml
-
-  for i in {1..30}; do
-    rabbit_host=$(kubectl get svc my-rabbit -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || echo "")
-    if [[ -n "$rabbit_host" ]]; then break; fi
-    echo "🔄 Waiting for RabbitMQ LB... ($i/30)"
-    sleep 10
-  done
-
-  if [[ -z "$rabbit_host" ]]; then
-    echo "❌  RabbitMQ LoadBalancer hostname not found after 5 minutes."
-    exit 1
+  if [[ "${VERS}" == "v2" ]]; then
+    kubectl wait ingress/rabbitmq-mgmt-ingress --for=jsonpath='{.status.loadBalancer.ingress[0].hostname}' --timeout=180s
+    kubectl wait ingress/rabbitmq-msg-ingress --for=jsonpath='{.status.loadBalancer.ingress[0].hostname}' --timeout=180s
+  else
+    echo "⏳ Waiting for RabbitMQ LoadBalancer to become ready..."
+    for i in {1..30}; do
+      rabbitmqmsgdns=$(kubectl get svc my-rabbit -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || echo "")
+      if [[ -n "$rabbitmqmsgdns" ]]; then
+        break
+      fi
+      echo "🔄 Waiting... ($i/30)"
+      sleep 10
+    done
   fi
 
   get_rabbit_info
-  echo "🌐 RabbitMQ URL: $rabbitmqnlbdns"
-
 
   if [[ "${VERS}" == "v2" ]]; then
-    aws ssm put-parameter --name "/$cluster_name/rabbithost" --value "/$rabbitmqnlbdns" --type "SecureString" --overwrite
+    aws ssm put-parameter --name "/$cluster_name/rabbithost" --value "/$rabbitmqmsgdns" --type "SecureString" --overwrite
     aws ssm put-parameter --name "/$cluster_name/rabbitusername" --value "/$rabbitusername" --type "SecureString" --overwrite
     aws ssm put-parameter --name "/$cluster_name/rabbitpassword" --value "/$rabbitpassword" --type "SecureString" --overwrite
   fi
@@ -263,28 +264,34 @@ install_rabbitmq() {
   kubectl create secret generic my-rabbit-default-user \
     --from-literal=username="$rabbitusername" \
     --from-literal=password="$rabbitpassword" \
-    --from-literal=hostdns="$rabbitmqnlbdns" \
+    --from-literal=hostdns="$rabbitmqmsgdns" \
     -n $app_namespace
 
   echo "Updating manifest namespaces..."
   sed -i "s/namespace:.*/namespace: $app_namespace/" manifests/${VERS}/*
-  echo "RabbitMQ UI: $rabbitmqnlbdns"
-  echo "Username: $rabbitusername"
-  echo "Password: $rabbitpassword"
 }
 
 
 #======================#
 # Return RabbitMQ Info #
 #======================#
-get_rabbit_info() {
-    declare -g rabbit_host=$(kubectl get svc my-rabbit -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || echo "")  
-    declare -g rabbitmqnlbdns="http://$rabbit_host:15672"
-    declare -g rabbitusername=$(kubectl get secret my-rabbit-default-user -o jsonpath="{.data.username}" | base64 --decode)
-    declare -g rabbitpassword=$(kubectl get secret my-rabbit-default-user -o jsonpath="{.data.password}" | base64 --decode)
-    echo "RabbitMQ DNS: $rabbitmqnlbdns"
-    echo "RabbitMQ Username: $rabbitusername"
-    echo "RabbitMQ Password: $rabbitpassword"
+get_rabbit_info() {  
+
+  if [[ "${VERS}" == "v2" ]]; then
+    declare -g rabbitmqmgmtdns=$(kubectl get ingress/rabbitmq-mgmt-ingress -o jsonpath='{.status.loadBalancer.ingress[0].hostname}') 
+    declare -g rabbitmqmsgdns=$(kubectl get ingress/rabbitmq-msg-ingress -o jsonpath='{.status.loadBalancer.ingress[0].hostname}') 
+    echo "RabbitMQ MGMT DNS: $rabbitmqmgmtdns"
+    echo "RabbitMQ MSG DNS: $rabbitmqmsgdns"
+  else
+    declare -g rabbitmqmsgdns=$(kubectl get svc my-rabbit -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || echo "")
+    echo "RabbitMQ MGMT DNS: $rabbitmqmsgdns:15672"
+    echo "RabbitMQ MSG DNS: $rabbitmqmsgdns:5672"
+  fi
+
+  declare -g rabbitusername=$(kubectl get secret my-rabbit-default-user -o jsonpath="{.data.username}" | base64 --decode)
+  declare -g rabbitpassword=$(kubectl get secret my-rabbit-default-user -o jsonpath="{.data.password}" | base64 --decode)
+  echo "RabbitMQ Username: $rabbitusername"
+  echo "RabbitMQ Password: $rabbitpassword"
 }
 
 
@@ -292,17 +299,12 @@ get_rabbit_info() {
 # Windows EC2 Setup   #
 #=====================#
 create_windows_component() {
-  rabbitmqnlbdns=$(aws elbv2 describe-load-balancers \
-    --query "LoadBalancers[?Type=='network'].LoadBalancerArn" \
-    --output text | \
-    xargs -n 1 aws elbv2 describe-tags --resource-arns | \
-    yq -r '.TagDescriptions[] | select(.Tags[]? | select(.Key=="service.k8s.aws/stack" and .Value=="default/my-rabbit")) | .ResourceArn' | \
-    xargs -n 1 aws elbv2 describe-load-balancers --load-balancer-arns | \
-    yq -r '.LoadBalancers[].DNSName')
+
+  get_rabbit_info
 
   aws ssm put-parameter \
     --name "/$cluster_name/rabbithost" \
-    --value "$rabbitmqnlbdns" \
+    --value "$rabbitmqmsgdns" \
     --type "SecureString" \
     --overwrite
 
@@ -327,8 +329,20 @@ create_windows_component() {
           ParameterKey=KeyName,ParameterValue=$key_name \
           ParameterKey=ClusterName,ParameterValue=$cluster_name \
           ParameterKey=VpcId,ParameterValue=$VPC_ID \
+          ParameterKey=ScriptURL,ParameterValue=$windows_script_url\
       --capabilities CAPABILITY_NAMED_IAM   \
       --region $AWS_DEFAULT_REGION
+
+  instance_id=$(aws ec2 describe-instances \
+    --filters "Name=tag:aws:cloudformation:stack-name,Values=event-poc-windows-ra-ec2" \
+    --query "Reservations[].Instances[].InstanceId" \
+    --output text)
+
+  echo "To run the SSM document and the powershell script on the instance, run:"
+  echo "aws ssm send-command --document-name \"WindowsAgentSetupScript\" \\"
+  echo "  --targets \"Key=instanceIds,Values=$instance_id\" \\"
+  echo "  --output text"
+
 }
 
 
@@ -339,30 +353,28 @@ main() {
 
   # set up cluster
   check_args "$@"
-  #create_cluster
+  create_cluster
   get_cluster_info
 
-  #setup_oidc_and_roles
+  setup_oidc_and_roles
   get_oidc_id
   extract_iam_roles
-  #configure_service_accounts
+  configure_service_accounts
 
-  #setup_efs
+  setup_efs
   get_efs_id
-  #setup_external_secrets
+  setup_external_secrets
 
   #if [[ "${VERS}" == "v2" ]]; then
   #  install_lb_controller
   #fi
-  #install_rabbitmq
+  install_rabbitmq
+  get_rabbit_info
+
   #if [[ "${VERS}" == "v2" ]]; then
   #  create_windows_component
   #fi
 
-
-
-
-  get_rabbit_info
 }
 
 main "$@"

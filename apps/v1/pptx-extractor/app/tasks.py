@@ -31,7 +31,7 @@ NOTES_DIR = Path(os.getenv("NOTES_DIR", "/artifacts/notes/"))
 NOTES_DIR.mkdir(parents=True, exist_ok=True)
 
 @celery_app.task(queue='ppt_tasks', name="tasks.process_pptx")
-def process_pptx(file_path, filename, file_id, job_id, tts_voice):
+def process_pptx(file_path, filename, file_id, job_id, tts_voice, tts_engine, piper_args):
     """
     Processes the PowerPoint file by extracting notes and converting slides to images.
     """
@@ -56,13 +56,15 @@ def process_pptx(file_path, filename, file_id, job_id, tts_voice):
             "notes_dir": str(NOTES_JOB_DIR),
             "job_id": job_id,
             "voice" : tts_voice,
+            "tts_engine": tts_engine,
+            "piper_args": piper_args,
             "file_id": file_id,
             "slides_processed": len(list(SLIDES_DIR.glob("slide_*.png")))
         }
         print(f"Successfully processed {filename}.")
 
         task_name = "tts_processor.synthesize"
-        args = [mdata["notes_dir"], mdata["job_id"], mdata["voice"], mdata["file_id"]]
+        args = [mdata["notes_dir"], mdata["job_id"], mdata["voice"], mdata["tts_engine"], mdata["piper_args"], mdata["file_id"]]
         result = celery_app.send_task(
             name=task_name,
             args=args,

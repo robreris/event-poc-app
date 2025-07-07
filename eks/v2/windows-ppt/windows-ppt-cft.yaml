@@ -92,14 +92,35 @@ Resources:
       Content:
         schemaVersion: "2.2"
         description: "Powershell script to setup windows render agent."
+        parameters:
+          ScriptURL:
+            type: "String"
+            default: !Ref ScriptURL
+          ClusterName:
+            type: "String"
+            default: !Ref ClusterName
+          AWSRegion:
+            type: "String"
+            default: !Ref AWS::Region
         mainSteps:
-          - action: aws:runPowershellScript
-            name: downloadAndRunScript
+          - action: "aws:runPowerShellScript"
+            name: "downloadAndRunScript"
             inputs:
               runCommand:
                 - "Invoke-WebRequest -Uri '{{ScriptURL}}' -OutFile C:\\userdata-run.ps1"
-                - "powershell.exe -ExecutionPolicy Bypass -File C:\\userdata-run.ps1 {{AWS::Region}} {{ClusterName}}"
+                - "powershell.exe -ExecutionPolicy Bypass -File C:\\userdata-run.ps1 {{AWSRegion}} {{ClusterName}}"
 
+  #SSMAssociationForASG:
+  #  Type: AWS::SSM::Association
+  #  Properties:
+  #    Name: WindowsAgentSetupScript
+  #    Targets:
+  #      - Key: tag:aws:autoscaling:groupName
+  #        Values: 
+  #          - !Ref RenderAutoScalingGroup   
+  #    MaxConcurrency: "100%"
+  #    MaxErrors: "1"
+  #    WaitForSuccessTimeoutSeconds: 600
 
   RenderAgentInstanceProfile:
     Type: AWS::IAM::InstanceProfile
@@ -108,6 +129,7 @@ Resources:
       Path: /
       Roles:
         - !Ref RenderAgentRole
+
   RenderLaunchTemplate:
     Type: AWS::EC2::LaunchTemplate   
     Properties:

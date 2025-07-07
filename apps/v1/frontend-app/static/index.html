@@ -92,14 +92,26 @@
       <label for="bumper2Input">Bumper 2 (mp4):</label>
       <input type="file" name="bumper2" id="bumper2Input" accept="video/mp4" required />
 
+      <label for="engineSelect">Select TTS Engine:</label>
+      <select id="engineSelect" name="tts_engine" required>
+        <option value="" disabled selected>Select an engine</option>
+        <option value="azure">Azure</option>
+        <option value="piper">Piper</option>
+      </select>
+      </br>
       <label for="voiceSelect">Select TTS Voice:</label>
       <select id="voiceSelect" name="voice" required>
         <option value="" disabled selected>Select a voice</option>
-        <option value="en-US-JennyNeural">Jenny (US)</option>
-        <option value="en-GB-RyanNeural">Ryan (UK)</option>
-        <option value="en-AU-NatashaNeural">Natasha (Australia)</option>
-        <option value="en-IN-NeerjaNeural">Neerja (India)</option>
       </select>
+
+      <div id="piperParams" style="display:none; margin-top:8px;">
+        <label for="piperls">Speaking speed. Default 1.25. Higher=slower speech.</label>
+        <input type="number" id="piperls" name="piperls" step=".01" value="1.25" />
+        <label for="piperns">Speaking variability. Default .7. Lower=flatter.</label>
+        <input type="number" id="piperns" name="piperns" step=".01" value=".7" />
+        <label for="pipernw">Phoneme width (speech rhythm/timing) variability. Default 1.15.</label>
+        <input type="number" id="pipernw" name="pipernw" step=".01" value="1.15" />
+      </div>
 
       <button type="submit">Upload</button>
     </form>
@@ -108,6 +120,38 @@
   </div>
 
   <script>
+    const voicesByEngine = {
+      azure: [
+        { value: "en-US-JennyNeural", label: "Jenny (US)" },
+        { value: "en-GB-RyanNeural", label: "Ryan (UK)" },
+        { value: "en-AU-NatashaNeural", label: "Natasha (Australia)" },
+        { value: "en-IN-NeerjaNeural", label: "Neerja (India)" }
+      ],
+      piper: [
+        { value: "en_US-ryan-high", label: "Ryan (Piper US)" },
+        { value: "en_US-joe-medium", label: "Joe (Piper US)" },
+        { value: "en_US-kathleen-low", label: "Kathleen (Piper US)" }, 
+        { value: "en_US-amy-medium", label: "Amy (Piper US)" }
+      ]
+    };
+
+    document.getElementById("engineSelect").addEventListener("change", function() {
+      const engine = this.value;
+      const voiceSelect = document.getElementById("voiceSelect");
+      const piperParams = document.getElementById("piperParams");
+
+      voiceSelect.options.length = 1;
+      if (voicesByEngine[engine]) {
+        voicesByEngine[engine].forEach(voice => {
+          const opt = document.createElement("option");
+          opt.value = voice.value;
+          opt.textContent = voice.label;
+          voiceSelect.appendChild(opt);
+        });
+      }
+      piperParams.style.display = engine === "piper" ? "block" : "none";
+    });
+    
     const form = document.getElementById("uploadForm");
     const status = document.getElementById("status");
 
@@ -119,6 +163,15 @@
       formData.append("bumper1", document.getElementById("bumper1Input").files[0]);
       formData.append("bumper2", document.getElementById("bumper2Input").files[0]);
       formData.append("voice", document.getElementById("voiceSelect").value);
+      formData.append("tts_engine", document.getElementById("engineSelect").value);
+
+      if (document.getElementById("engineSelect").value == "piper") {
+        const ls = document.getElementById("piperls").value;
+        const ns = document.getElementById("piperns").value;
+        const nw = document.getElementById("pipernw").value;
+        const paramsArr = [parseFloat(ls), parseFloat(ns), parseFloat(nw)];
+        formData.append("piperParams", JSON.stringify(paramsArr));
+      }
 
       try {
         const res = await fetch("/upload", {
