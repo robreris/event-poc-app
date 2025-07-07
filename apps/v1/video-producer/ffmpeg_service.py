@@ -144,7 +144,7 @@ def produce_video(job_id, file_id):
         subprocess.run([
             'ffmpeg', '-y', '-loop', '1', '-i', str(image),
             '-i', str(trimmed_audio),
-            '-vf', 'scale=1920:1080,setsar=1:1,format=yuv420p',
+            '-vf', 'scale=640:360,setsar=1:1,format=yuv420p',
             '-r', '30',
             '-c:v', 'libx264', '-preset', 'fast', '-tune', 'stillimage', '-shortest',
             '-c:a', 'aac', '-b:a', '192k', '-ar', '48000', '-ac', '2',
