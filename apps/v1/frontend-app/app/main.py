@@ -41,7 +41,8 @@ async def upload_files(
      ppt: UploadFile = File(...),
      bumper1: UploadFile = File(...),
      bumper2: UploadFile = File(...),
-     voice: str = Form(...)
+     voice: str = Form(...),
+     tts_engine: str = Form(...)
 ):
     file_id = str(uuid.uuid4())
     job_id = hashlib.sha256(datetime.utcnow().isoformat().encode()).hexdigest()[:10]
@@ -54,6 +55,7 @@ async def upload_files(
         "file_id": file_id,
         "job_id": job_id,
         "voice": voice,
+        "tts_engine": tts_engine,
     }
 
     metadata["file_path"] = save_to_efs(ppt, ppt.filename, metadata)
@@ -61,7 +63,7 @@ async def upload_files(
     save_bumper_to_efs(bumper2, f"{job_id}-bumper2.mp4")
 
     publish_message(metadata)
-    print("Powerpoint uploaded and sent with selected voice {voice}...")
+    print("Powerpoint uploaded and sent with selected voice {voice} and engine {tts_engine}...")
     return {"status": "ok", "file_id": file_id, "file_name":ppt.filename}
 
 @app.get("/")

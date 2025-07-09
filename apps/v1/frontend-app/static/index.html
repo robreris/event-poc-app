@@ -92,13 +92,16 @@
       <label for="bumper2Input">Bumper 2 (mp4):</label>
       <input type="file" name="bumper2" id="bumper2Input" accept="video/mp4" required />
 
+      <label for="engineSelect">Select TTS Engine:</label>
+      <select id="engineSelect" name="tts_engine" required>
+        <option value="" disabled selected>Select an engine</option>
+        <option value="azure">Azure</option>
+        <option value="piper">Piper</option>
+      </select>
+      </br>
       <label for="voiceSelect">Select TTS Voice:</label>
       <select id="voiceSelect" name="voice" required>
         <option value="" disabled selected>Select a voice</option>
-        <option value="en-US-JennyNeural">Jenny (US)</option>
-        <option value="en-GB-RyanNeural">Ryan (UK)</option>
-        <option value="en-AU-NatashaNeural">Natasha (Australia)</option>
-        <option value="en-IN-NeerjaNeural">Neerja (India)</option>
       </select>
 
       <button type="submit">Upload</button>
@@ -108,6 +111,34 @@
   </div>
 
   <script>
+    const voicesByEngine = {
+      azure: [
+        { value: "en-US-JennyNeural", label: "Jenny (US)" },
+        { value: "en-GB-RyanNeural", label: "Ryan (UK)" },
+        { value: "en-AU-NatashaNeural", label: "Natasha (Australia)" },
+        { value: "en-IN-NeerjaNeural", label: "Neerja (India)" }
+      ],
+      piper: [
+        { value: "en_GB-alan-medium", label: "Alan (Piper US)" }
+        // Add more Piper voices as you download models
+      ]
+    };
+
+    document.getElementById("engineSelect").addEventListener("change", function() {
+      const engine = this.value;
+      const voiceSelect = document.getElementById("voiceSelect");
+      // Remove all current options except the first (prompt)
+      voiceSelect.options.length = 1;
+      if (voicesByEngine[engine]) {
+        voicesByEngine[engine].forEach(voice => {
+          const opt = document.createElement("option");
+          opt.value = voice.value;
+          opt.textContent = voice.label;
+          voiceSelect.appendChild(opt);
+        });
+      }
+    });
+    
     const form = document.getElementById("uploadForm");
     const status = document.getElementById("status");
 
@@ -119,6 +150,7 @@
       formData.append("bumper1", document.getElementById("bumper1Input").files[0]);
       formData.append("bumper2", document.getElementById("bumper2Input").files[0]);
       formData.append("voice", document.getElementById("voiceSelect").value);
+      formData.append("tts_engine", document.getElementById("engineSelect").value);
 
       try {
         const res = await fetch("/upload", {

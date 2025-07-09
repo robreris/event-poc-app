@@ -35,11 +35,11 @@ spec:
               name: my-rabbit-default-user
               key: password
         - name: RES_WIDTH
-          value: 640
+          value: "640"
         - name: RES_HEIGHT
-          value: 360 
+          value: "360" 
         - name: FPS
-          value: 30
+          value: "30"
       volumes:
       - name: shared-artifacts
         persistentVolumeClaim:

@@ -5,6 +5,8 @@ dependencies:
   - pip
   - libgcc-ng
   - libstdcxx-ng
+  - ffmpeg
   - pip:
+      - piper-tts
       - azure-cognitiveservices-speech==1.38.0
       - celery==5.5.1
