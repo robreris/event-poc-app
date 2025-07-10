@@ -104,6 +104,14 @@
         <option value="" disabled selected>Select a voice</option>
       </select>
 
+      <div id="piperParams" style="display:none; margin-top:8px;">
+        <label for="piperls">Length Scale:</label>
+        <input type="number" id="piperls" name="piperls" step="any" />
+        <label for="piperns">Noise Scale:</label>
+        <input type="number" id="piperns" name="piperns" step="any" />
+        <label for="pipernw">Noise W:</label>
+        <input type="number" id="pipernw" name="pipernw" step="any" />
+
       <button type="submit">Upload</button>
     </form>
 
@@ -119,15 +127,18 @@
         { value: "en-IN-NeerjaNeural", label: "Neerja (India)" }
       ],
       piper: [
-        { value: "en_GB-alan-medium", label: "Alan (Piper US)" }
-        // Add more Piper voices as you download models
+        { value: "en_US-ryan-high", label: "Ryan (Piper US)" },
+        { value: "en_US-joe-medium", label: "Joe (Piper US)" },
+        { value: "en_US-kathleen-low", label: "Kathleen (Piper US)" },
+        { value: "en_US-amy-medium", label: "Amy (Piper US)" }
       ]
     };
 
     document.getElementById("engineSelect").addEventListener("change", function() {
       const engine = this.value;
       const voiceSelect = document.getElementById("voiceSelect");
-      // Remove all current options except the first (prompt)
+      const piperParams = document.getElementById("piperParams");
+
       voiceSelect.options.length = 1;
       if (voicesByEngine[engine]) {
         voicesByEngine[engine].forEach(voice => {
@@ -137,6 +148,7 @@
           voiceSelect.appendChild(opt);
         });
       }
+      piperParams.style.display = engine === "piper" ? "block" : "none";
     });
     
     const form = document.getElementById("uploadForm");

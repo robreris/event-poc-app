@@ -46,7 +46,7 @@ celery_app = Celery(
 )
 
 @celery_app.task(queue='tts_tasks', name='tts_processor.synthesize')
-def synthesize(input_dir: str, job_id: str, voice: str, tts_engine: str, file_id: str) -> str:
+def synthesize(input_dir: str, job_id: str, voice: str, tts_engine: str, piper_args: list[float], file_id: str) -> str:
     input_path = Path(input_dir)
     if not input_path.exists() or not input_path.is_dir():
         raise ValueError(f"{input_dir} is not a valid directory")
@@ -94,7 +94,10 @@ def synthesize(input_dir: str, job_id: str, voice: str, tts_engine: str, file_id
                 piper_cmd = [
                     PIPER_BINARY,
                     "--model", "/models/"+voice+".onnx",
-                    "--output_file", str(output_wav)
+                    "--output_file", str(output_wav),
+                    "--length_scale", str(piper_args[0]),        # speed of speech; higher=slower
+                    "--noise_scale", str(piper_args[1]),       # speech pattern variation; lower=flatter
+                    "--noise_w", str(piper_args[2])            # duration/affects timing and rhythm
                 ]
                 print(f"[DEBUG] Running Piper: {' '.join(piper_cmd)}")
 

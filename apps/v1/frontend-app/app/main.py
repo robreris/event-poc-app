@@ -42,11 +42,15 @@ async def upload_files(
      bumper1: UploadFile = File(...),
      bumper2: UploadFile = File(...),
      voice: str = Form(...),
-     tts_engine: str = Form(...)
+     tts_engine: str = Form(...),
+     piperls: float = Form(0.85),
+     piperns: float = Form(0.5),
+     pipernw: float = Form(0.45)
 ):
     file_id = str(uuid.uuid4())
     job_id = hashlib.sha256(datetime.utcnow().isoformat().encode()).hexdigest()[:10]
 
+    piper_args = [v for v in (piperls, piperns, pipernw) if v is not None]
     metadata = {
         "event": "ppt-uploaded",
         "filename": ppt.filename,
@@ -56,6 +60,7 @@ async def upload_files(
         "job_id": job_id,
         "voice": voice,
         "tts_engine": tts_engine,
+        "piper_args": piper_args
     }
 
     metadata["file_path"] = save_to_efs(ppt, ppt.filename, metadata)
