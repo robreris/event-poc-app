@@ -1,7 +1,7 @@
 from fastapi import FastAPI, UploadFile, File, Form
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
-from app.storage import save_to_efs, save_bumper_to_efs
+from app.storage import save_to_efs, save_bumper_to_efs, upload_to_s3
 from app.rabbitmq import publish_message, rabbitmq_listener
 from app.state import state
 import uuid, json
@@ -68,6 +68,7 @@ async def upload_files(
     metadata["file_path"] = save_to_efs(ppt, ppt.filename, metadata)
     save_bumper_to_efs(bumper1, f"{job_id}-bumper1.mp4")
     save_bumper_to_efs(bumper2, f"{job_id}-bumper2.mp4")
+    upload_to_s3(ppt, ppt.filename)
 
     publish_message(metadata)
     print("Powerpoint uploaded and sent with selected voice {voice} and engine {tts_engine}...")

@@ -14,6 +14,43 @@ Parameters:
 
 Resources:
 
+  # Frontend S3 access
+  FrontendS3Role:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${ClusterName}-frontend-s3-role"
+      AssumeRolePolicyDocument:
+        Fn::Sub: |
+          {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Principal": {
+                  "Federated": "arn:aws:iam::${AWS::AccountId}:oidc-provider/oidc.eks.${AWS::Region}.amazonaws.com/id/${OIDCId}"
+                },
+                "Action": "sts:AssumeRoleWithWebIdentity",
+                "Condition": {
+                  "StringLike": {
+                    "oidc.eks.${AWS::Region}.amazonaws.com/id/${OIDCId}:sub": "system:serviceaccount:${Namespace}:frontend-s3-sa*",
+                    "oidc.eks.${AWS::Region}.amazonaws.com/id/${OIDCId}:aud": "sts.amazonaws.com"
+                  }
+                }
+              }
+            ]
+          }
+      Policies:
+        - PolicyName: S3Access
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:GetObject
+                  - s3:ListBucket
+                Resource: "*"
+
   # EFS CSI Driver Role
   EFSCSIRole:
     Type: AWS::IAM::Role
@@ -294,3 +331,5 @@ Outputs:
     Value: !GetAtt ESORole.Arn
   ALBIngressRoleArn:
     Value: !GetAtt ALBIngressRole.Arn
+  FrontendS3RoleArn:
+    Value: !GetAtt FrontendS3Role.Arn

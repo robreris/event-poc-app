@@ -13,6 +13,7 @@ spec:
       labels:
         app: ppt-upload
     spec:
+      serviceAccountName: frontend-s3-sa
       containers:
       - name: ppt-upload
         image: 228122752878.dkr.ecr.us-east-1.amazonaws.com/event-driven-poc-frontend

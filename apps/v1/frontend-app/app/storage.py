@@ -1,9 +1,10 @@
-import os, json
+import os, json, boto3
 from fastapi import UploadFile
 
 PPT_PATH = "/artifacts/powerpoints/"
 MD_PATH = "/artifacts/metadata/"
 BUMPER_PATH = "/artifacts/bumpers/"
+S3_BUCKET = "event-driven-poc-ftnt"
 
 def save_bumper_to_efs(file: UploadFile, target_filename: str) -> str:
     os.makedirs(BUMPER_PATH, exist_ok=True)
@@ -29,3 +30,21 @@ def save_to_efs(file: UploadFile, file_name: str, mdata: dict[str, any]) -> str:
     print(f"Powerpoint saved to {full_path_ppt}")  
     print(f"Job metadata saved to {full_path_mdata}")  
     return full_path_ppt
+
+def upload_to_s3(file: UploadFile, s3_key: str):
+    s3 = boto3.client("s3", region_name=S3_REGION)
+    # Run upload
+    try:
+        s3.upload_file(file.rile.read(), S3_BUCKET, s3_key)
+        print(f"[INFO] Uploaded {local_path} to s3://{S3_BUCKET}/{s3_key}")
+    except ClientError as e:
+        print(f"S3 upload failed: {e}")
+        raise
+    # Confirm successful upload
+    try:
+        response = s3.head_object(Bucket=S3_BUCKET, Key=s3_key)
+        print("S3 upload confirmed. Metadata: ")
+        print(response) 
+    except ClientError as e:
+        print("S3 upload confirmation failed: {e}")
+        raise

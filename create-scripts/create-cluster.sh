@@ -93,7 +93,7 @@ get_oidc_id() {
 # Extract IAM Role Outputs #
 #===========================#
 extract_iam_roles() {
-  for role_key in EFSCSIRoleArn ESORoleArn ALBIngressRoleArn; do
+  for role_key in EFSCSIRoleArn ESORoleArn ALBIngressRoleArn FrontendS3RoleArn; do
     for i in {1..30}; do
       role_value=$(aws cloudformation describe-stacks --stack-name eks-addon-roles --query "Stacks[0].Outputs[?OutputKey=='$role_key'].OutputValue" --output text)
       if [[ -n "$role_value" ]]; then
@@ -109,6 +109,7 @@ extract_iam_roles() {
   echo $EFSCSIRoleArn
   echo $ESORoleArn
   echo $ALBIngressRoleArn
+  echo $FrontendS3RoleArn
 }
 
 #============================#
@@ -119,6 +120,7 @@ configure_service_accounts() {
   sed -i "s/^\(\s*namespace:\s*\).*/\1${app_namespace}/" eks/${VERS}/service-accounts/sa.yml
   sed -i "/name: efs-csi-controller-sa/,/eks.amazonaws.com\/role-arn:/ s#^\([[:space:]]*eks.amazonaws.com/role-arn:\).*#\1 $EFSCSIRoleArn#" eks/${VERS}/service-accounts/sa.yml
   sed -i "/name: eso-sa/,/eks.amazonaws.com\/role-arn:/ s#^\([[:space:]]*eks.amazonaws.com/role-arn:\).*#\1 $ESORoleArn#" eks/${VERS}/service-accounts/sa.yml
+  sed -i "/name: frontend-s3-sa/,/eks.amazonaws.com\/role-arn:/ s#^\([[:space:]]*eks.amazonaws.com/role-arn:\).*#\1 $FrontendS3RoleArn#" eks/${VERS}/service-accounts/sa.yml
   sed -i "/name: aws-alb-ingress-controller/,/eks.amazonaws.com\/role-arn:/ s#^\([[:space:]]*eks.amazonaws.com/role-arn:\).*#\1 $ALBIngressRoleArn#" eks/${VERS}/service-accounts/sa.yml
   sed -i "/name: aws-alb-ingress-controller/,/namespace:/ s#^\([[:space:]]*namespace:\).*#\1 $elb_controller_namespace#" eks/${VERS}/service-accounts/sa.yml
 
@@ -353,22 +355,22 @@ main() {
 
   # set up cluster
   check_args "$@"
-  create_cluster
+  #create_cluster
   get_cluster_info
 
   setup_oidc_and_roles
-  get_oidc_id
+  #get_oidc_id
   extract_iam_roles
   configure_service_accounts
 
-  setup_efs
-  get_efs_id
-  setup_external_secrets
+  #setup_efs
+  #get_efs_id
+  #setup_external_secrets
 
   #if [[ "${VERS}" == "v2" ]]; then
   #  install_lb_controller
   #fi
-  install_rabbitmq
+  #install_rabbitmq
   get_rabbit_info
 
   #if [[ "${VERS}" == "v2" ]]; then

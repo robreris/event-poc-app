@@ -42,11 +42,11 @@ spec:
               name: my-rabbit-default-user
               key: password     
         - name: RES_WIDTH
-          value: 1280
+          value: "1280"
         - name: RES_HEIGHT
-          value: 720
+          value: "720"
         - name: SLIDE_WIDTH_INCHES
-          value: 13.333 
+          value: "13.333" 
       volumes:
       - name: shared-artifacts
         persistentVolumeClaim:
