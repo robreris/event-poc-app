@@ -66,7 +66,8 @@ def produce_video(job_id, file_id):
         )
         result = subprocess.run([
             'ffmpeg', '-y', '-i', str(input_path),
-            '-vf', vf_filter,
+            #'-vf', vf_filter,
+            '-vf', f"scale='if(gt(a,{width}/{height}),{width},-1)':'if(gt(a,{width}/{height}),-1,{height})'",
             '-r', str(fps),
             '-c:v', 'libx264', '-preset', 'fast',
             '-c:a', 'aac', '-b:a', '192k', '-ar', '48000', '-ac', '2',
@@ -212,7 +213,8 @@ def produce_video(job_id, file_id):
         subprocess.run([
             'ffmpeg', '-y', '-loop', '1', '-i', str(image),
             '-i', str(trimmed_audio),
-            '-vf', vf_filter,
+            #'-vf', vf_filter,
+            '-vf', f"scale='if(gt(a,{RES_WIDTH}/{RES_HEIGHT}),{RES_WIDTH},-1)':'if(gt(a,{RES_WIDTH}/{RES_HEIGHT}),-1,{RES_HEIGHT})'",
             '-r', str(FPS),
             '-c:v', 'libx264', '-preset', 'fast', '-tune', 'stillimage', '-shortest',
             '-c:a', 'aac', '-b:a', '192k', '-ar', '48000', '-ac', '2',

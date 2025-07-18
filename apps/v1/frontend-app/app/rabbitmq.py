@@ -3,6 +3,7 @@ from celery import Celery
 import json
 import aio_pika
 from app.state import state
+from kombu import Connection, Producer, Queue
 
 # Environment-based configuration
 RABBITMQ_HOST = os.environ.get("RABBITMQ_HOST", "rabbitmq")
@@ -27,16 +28,29 @@ def publish_message(data: dict):
     Publishes a message that invokes the 'process_pptx' task on the worker.
     The task must be registered as @celery_app.task in the worker side.
     """
-    task_name = "tasks.process_pptx"  # must match your worker task name
-    args = [data["file_path"], data["filename"], data["file_id"], data["job_id"], data["voice"], data["tts_engine"], data["piper_args"]]  # match task signature
+    #task_name = "tasks.process_pptx"  # must match your worker task name
+    #args = [data["s3_key"], data["file_path"], data["filename"], data["file_id"], data["job_id"], data["voice"], data["tts_engine"], data["piper_args"]]  # match task signature
 
-    result = celery_app.send_task(
-        name=task_name,
-        args=args,
-        queue="ppt_tasks",  # must match queue in @task(queue='ppt_tasks')
-    )
+    #result = celery_app.send_task(
+    #    name=task_name,
+    #    args=args,
+    #    queue="ppt_tasks",  # must match queue in @task(queue='ppt_tasks')
+    #)
 
-    print(f"Task {result.id} published to queue 'ppt_tasks'.")
+    with Connection(CELERY_BROKER_URL) as conn:
+        queue = Queue('ppt_tasks', routing_key='ppt_tasks')
+        producer = Producer(conn)
+        producer.publish(
+            data,
+            serializer='json',
+            exchange='',
+            routing_key='ppt_tasks',
+            declare=[queue],
+            retry=True
+        )
+        print(f"Sent job {data['job_id']} to queue ppt_tasks for Windows receiver")
+
+    #print(f"Task {result.id} published to queue 'ppt_tasks'.")
 
 async def rabbitmq_listener():
     print("Starting RabbitMQ listener...")

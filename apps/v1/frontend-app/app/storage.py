@@ -1,10 +1,12 @@
 import os, json, boto3
 from fastapi import UploadFile
+from botocore.exceptions import ClientError
 
 PPT_PATH = "/artifacts/powerpoints/"
 MD_PATH = "/artifacts/metadata/"
 BUMPER_PATH = "/artifacts/bumpers/"
-S3_BUCKET = "event-driven-poc-ftnt"
+S3_BUCKET = os.getenv("S3_BUCKET", "event-driven-poc-ftnt")
+S3_REGION = os.getenv("S3_REGION", "us-east-1")
 
 def save_bumper_to_efs(file: UploadFile, target_filename: str) -> str:
     os.makedirs(BUMPER_PATH, exist_ok=True)
@@ -31,12 +33,14 @@ def save_to_efs(file: UploadFile, file_name: str, mdata: dict[str, any]) -> str:
     print(f"Job metadata saved to {full_path_mdata}")  
     return full_path_ppt
 
-def upload_to_s3(file: UploadFile, s3_key: str):
+def upload_to_s3(file: UploadFile, file_name: str, job_id: str):
     s3 = boto3.client("s3", region_name=S3_REGION)
     # Run upload
+    full_path_ppt = os.path.join(PPT_PATH, f"{file_name}")
+    s3_key = job_id+"/"+file_name 
     try:
-        s3.upload_file(file.rile.read(), S3_BUCKET, s3_key)
-        print(f"[INFO] Uploaded {local_path} to s3://{S3_BUCKET}/{s3_key}")
+        s3.upload_file(full_path_ppt, S3_BUCKET, s3_key)
+        print(f"[INFO] Uploaded {full_path_ppt} to s3://{S3_BUCKET}/{s3_key}")
     except ClientError as e:
         print(f"S3 upload failed: {e}")
         raise

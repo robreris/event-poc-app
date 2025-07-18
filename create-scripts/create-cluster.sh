@@ -355,22 +355,22 @@ main() {
 
   # set up cluster
   check_args "$@"
-  #create_cluster
+  create_cluster
   get_cluster_info
 
   setup_oidc_and_roles
-  #get_oidc_id
+  get_oidc_id
   extract_iam_roles
   configure_service_accounts
 
-  #setup_efs
-  #get_efs_id
-  #setup_external_secrets
+  setup_efs
+  get_efs_id
+  setup_external_secrets
 
   #if [[ "${VERS}" == "v2" ]]; then
   #  install_lb_controller
   #fi
-  #install_rabbitmq
+  install_rabbitmq
   get_rabbit_info
 
   #if [[ "${VERS}" == "v2" ]]; then

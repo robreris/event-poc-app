@@ -5,13 +5,14 @@ from pathlib import Path
 import boto3
 import win32com.client
 import pika
+from pptx import Presentation
 
 # --- RabbitMQ Config from Environment ---
-RABBITMQ_HOST = os.getenv("RABBITMQ_HOST", "a4c4d03e8e6da414e8d4663a0303603d-1176762498.us-east-1.elb.amazonaws.com")
-RABBITMQ_USER = os.getenv("RABBITMQ_USER", "default_user_H0F_sRI1GybRqz3-OIt")
-RABBITMQ_PASS = os.getenv("RABBITMQ_PASS", "K2h6ueAXCQDycW2Ia_qIyyjs--PuZqZC")
+RABBITMQ_HOST = os.getenv("RABBITMQ_HOST", "")
+RABBITMQ_USER = os.getenv("RABBITMQ_USER", "")
+RABBITMQ_PASS = os.getenv("RABBITMQ_PASS", "")
 RABBITMQ_PORT = int(os.getenv("RABBITMQ_PORT", "5672"))
-QUEUE_NAME = os.getenv("RABBITMQ_QUEUE", "ppt-tasks")
+QUEUE_NAME = os.getenv("RABBITMQ_QUEUE", "ppt_tasks")
 RESPONSE_QUEUE = os.getenv("RABBITMQ_RESPONSE_QUEUE", "windows_response")
 
 # === Config from environment ===
@@ -36,6 +37,30 @@ def upload_to_s3(local_path, s3_key):
     return f"s3://{S3_BUCKET}/{s3_key}"
 
 # === PowerPoint Extraction ===
+
+### Note: need to work in functionality to extract notes and upload to their own folder in S3
+
+def process_pptx_notes(pptx_path, output_dir):
+    prs = Presentation(pptx_path)
+    output = []
+
+    for i, slide in enumerate(prs.slides, start=1):
+        notes_slide = slide.notes_slide if slide.has_notes_slide else None
+        notes_text = notes_slide.notes_text_frame.text if notes_slide else ""
+        note_path = output_dir / f"slide_{i:02d}.txt"
+        
+        slide_info = {
+            "slide": i,
+            "notes": notes_text.strip()
+        }
+
+        # Write to individual text file      
+        with open(note_path, "w", encoding="utf-8") as f:
+            f.write(notes_text)
+
+        output.append(slide_info)
+
+    return output
 
 def process_pptx_slides(pptx_path, output_dir):
     ppt_app = win32com.client.Dispatch("PowerPoint.Application")
@@ -108,33 +133,56 @@ def process_pptx_slides(pptx_path, output_dir):
 
 def process_job(job):
     job_id = job["job_id"]
-    pptx_s3_key = job["pptx_s3_key"]
-    pptx_filename = job["pptx_file_id"]
+    pptx_s3_key = job["s3_key"]
+    pptx_filename = job["filename"]
     local_pptx = TMP_DIR / f"{job_id}_{pptx_filename}"
     slides_dir = TMP_DIR / f"{job_id}_slides"
     slides_dir.mkdir(exist_ok=True)
+    notes_dir = TMP_DIR / f"{job_id}_notes"
+    notes_dir.mkdir(exist_ok=True)
 
     print(f"[INFO] Downloading {pptx_s3_key} from S3 to {local_pptx}")
     download_from_s3(pptx_s3_key, local_pptx)
     print("[INFO] Download complete. Processing slides/animations...")
 
+    notes = process_pptx_notes(local_pptx, notes_dir)
     slides, videos = process_pptx_slides(local_pptx, slides_dir)
 
-    # Upload each exported file to S3, set s3_key
-    all_outputs = []
+    # Upload notes
+    notes_files = []
+    for text_file in sorted(notes_dir.glob("*.txt")):
+        local_path = notes_dir / text_file
+        s3_key = f"processed/notes/{job_id}/{Path(local_path).name}"
+        upload_to_s3(local_path, s3_key)
+        notes_files.append(Path(local_path).name)
+        del local_path
+
+    # Upload each exported file to S3
+    slides_files = []
     for obj in slides + videos:
         local_path = obj["local_path"]
-        s3_key = f"processed/{job_id}/{Path(local_path).name}"
+        s3_key = f"processed/slides/{job_id}/{Path(local_path).name}"
         upload_to_s3(local_path, s3_key)
-        obj["s3_key"] = s3_key
+        slides_files.append(Path(local_path).name)
         del obj["local_path"]  # remove local path, not needed for result
-        all_outputs.append(obj)
-
+    
+    tts_engine = job["tts_engine"]
+    piper_args = job["piper_args"]
+    file_id = job["file_id"]
+    
     # Compose manifest JSON
     result = {
         "job_id": job_id,
-        "slides_and_animations": all_outputs,
-        "efs_uploads": job.get("efs_uploads", [])
+        "s3_bucket": S3_BUCKET,
+        "notes_s3_prefix": f"processed/notes/{job_id}",
+        "notes_files": notes_files,
+        "slides_s3_prefix": f"processed/slides/{job_id}",
+        "slides_files": slides_files,
+        "voice": job["voice"],
+        "tts_engine": tts_engine,
+        "piper_args": piper_args,
+        "file_id": file_id
+        
     }
     return result
 
@@ -144,8 +192,8 @@ def test_main():
     # Simulated incoming job (edit as needed)
     test_message = {
         "job_id": "job123",
-        "pptx_s3_key": "Slides for FGT FSI Script - Copy.pptx",
-        "pptx_file_id": "sample.pptx",
+        "s3_key": "Slides for FGT FSI Script - Copy.pptx",
+        "filename": "sample.pptx",
         "efs_uploads": [
             {"filename": "user_video_1.mp4", "efs_path": "/mnt/efs/user_abc/user_video_1.mp4"}
         ]
@@ -163,6 +211,8 @@ def rabbitmq_callback(ch, method, properties, body):
         print("[INFO] Received message from RabbitMQ.")
         job = json.loads(body)
         result = process_job(job)
+        print("TYPE BEFORE JSON:", type(result))
+        print("RESULT CONTENTS:", result)
         # Publish result as a JSON string to the response queue
         ch.basic_publish(
             exchange='',

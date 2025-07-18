@@ -62,13 +62,14 @@ async def upload_files(
         "job_id": job_id,
         "voice": voice,
         "tts_engine": tts_engine,
-        "piper_args": piper_args
+        "piper_args": piper_args,
+        "s3_key": job_id+"/"+ppt.filename 
     }
 
     metadata["file_path"] = save_to_efs(ppt, ppt.filename, metadata)
     save_bumper_to_efs(bumper1, f"{job_id}-bumper1.mp4")
     save_bumper_to_efs(bumper2, f"{job_id}-bumper2.mp4")
-    upload_to_s3(ppt, ppt.filename)
+    upload_to_s3(ppt, ppt.filename, str(job_id))
 
     publish_message(metadata)
     print("Powerpoint uploaded and sent with selected voice {voice} and engine {tts_engine}...")

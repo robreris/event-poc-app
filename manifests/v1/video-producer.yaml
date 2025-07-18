@@ -35,9 +35,9 @@ spec:
               name: my-rabbit-default-user
               key: password
         - name: RES_WIDTH
-          value: "1280"
+          value: "1920"
         - name: RES_HEIGHT
-          value: "720" 
+          value: "1080" 
         - name: FPS
           value: "30"
       volumes:

@@ -1,28 +1,29 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: ppt-extractor-service
+  name: ppt-downloader-service
   namespace: event-poc
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: ppt-extractor
+      app: ppt-downloader
   template:
     metadata:
       labels:
-        app: ppt-extractor
+        app: ppt-downloader
     spec:
+      serviceAccountName: frontend-s3-sa
       containers:
-      - name: ppt-extractor
-        image: 228122752878.dkr.ecr.us-east-1.amazonaws.com/event-driven-poc-ppt-extractor
+      - name: ppt-downloader
+        image: 228122752878.dkr.ecr.us-east-1.amazonaws.com/event-driven-poc-ppt-downloader
         command: ["/bin/bash", "-c"]
         args:
           - |
             source /opt/conda/etc/profile.d/conda.sh && \
-            conda activate pptx_extractor_env && \
-            echo "Starting celery..." && \
-            celery -A tasks worker --loglevel=info -Q ppt_tasks
+            conda activate pptx_downloader_env && \
+            echo "Starting downloader..." && \
+            python -u tasks.py 
         ports:
         - containerPort: 80
         volumeMounts:
