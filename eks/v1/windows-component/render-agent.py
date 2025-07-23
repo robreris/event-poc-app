@@ -62,6 +62,29 @@ def process_pptx_notes(pptx_path, output_dir):
 
     return output
 
+# Wait for the file to exist and grow stable in size
+def wait_for_video(path, min_size=10000, stable_seconds=3, timeout=120):
+    """Wait for video to be written, stable for several seconds."""
+    start = time.time()
+    last_size = -1
+    stable_time = None
+    while True:
+        if os.path.exists(path):
+            size = os.path.getsize(path)
+            if size >= min_size:
+                if size == last_size:
+                    if stable_time is None:
+                        stable_time = time.time()
+                    elif time.time() - stable_time >= stable_seconds:
+                        return True
+                else:
+                    stable_time = None
+                last_size = size
+        if time.time() - start > timeout:
+            print(f"[WARN] Timeout waiting for {path} to stabilize.")
+            return False
+        time.sleep(1)
+
 def process_pptx_slides(pptx_path, output_dir):
     ppt_app = win32com.client.Dispatch("PowerPoint.Application")
     ppt_app.Visible = 1
@@ -88,20 +111,37 @@ def process_pptx_slides(pptx_path, output_dir):
             # Export animation as mp4 using CreateVideo workaround
             video_filename = f"slide_{slide_number:02d}_animation.mp4"
             video_path = str(output_dir / video_filename)
+            
+            try:
+                # Create a new temp presentation with just this slide
+                temp_pres = ppt_app.Presentations.Add()
+                while temp_pres.Slides.Count > 0:
+                    temp_pres.Slides[1].Delete()
+                slide.Copy()
+                temp_pres.Slides.Paste()
+                temp_pres.SaveAs(str(output_dir / f"slide_{slide_number:02d}_only.pptx"))
+                for _ in range(5):
+                    if Path(video_path).exists():
+                        break
+                    time.sleep(1)
+                time.sleep(0.5)  # Give a little extra time for good measure
+                temp_pres.CreateVideo(video_path, UseTimingsAndNarrations=True)
+                print(f"CreateVideoStatus for slide_{slide_number:02d}_only.pptx: {temp_pres.CreateVideoStatus}")
 
-            # Create a new temp presentation with just this slide
-            temp_pres = ppt_app.Presentations.Add()
-            slide.Copy()
-            temp_pres.Slides.Paste()
-            temp_pres.SaveAs(str(output_dir / f"slide_{slide_number:02d}_only.pptx"))
-            temp_pres.CreateVideo(video_path, UseTimingsAndNarrations=True)
-
-            print(f"[INFO] Exporting animation for slide {slide_number} to {video_path}...")
-            # Wait for export to finish (poll CreateVideoStatus)
-            while temp_pres.CreateVideoStatus == 1:  # 1 == InProgress
-                time.sleep(1)
-
-            temp_pres.Close()
+                print(f"[INFO] Exporting animation for slide {slide_number} to {video_path}...")
+                # Wait for export to finish (poll CreateVideoStatus)
+                while temp_pres.CreateVideoStatus == 1:  # 1 == InProgress, 2 == Done
+                    time.sleep(1)
+                    
+                for _ in range(20):
+                    if os.path.exists(video_path) and os.path.getsize(video_path) > 10000:
+                        break
+                    time.sleep(1)
+                # Now wait for the file to stabilize:
+                wait_for_video(video_path, min_size=500, stable_seconds=5, timeout=180)
+                temp_pres.Close()
+            except Exception as error:
+                print(f"Error exporting animation: {error}")
 
             videos_info.append({
                 "slide_id": slide_id,
