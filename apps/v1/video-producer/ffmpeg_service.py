@@ -31,10 +31,12 @@ def produce_video(job_id, file_id):
 
     temp_dir = output_dir / "temp"
     temp_adj_dir = output_dir / "temp_adj"
+    temp_adj_final_dir = output_dir / "temp_adj_final"
     final_output_dir = output_dir / "outputs"
     final_output_dir.mkdir(parents=True, exist_ok=True)
     temp_dir.mkdir(parents=True, exist_ok=True)
     temp_adj_dir.mkdir(parents=True, exist_ok=True)
+    temp_adj_final_dir.mkdir(parents=True, exist_ok=True)
 
     bumper_path_in = Path(f"/artifacts/bumpers/{job_id}-bumper1.mp4").resolve()
     bumper_path_out = Path(f"/artifacts/bumpers/{job_id}-bumper2.mp4").resolve()
@@ -204,56 +206,25 @@ def produce_video(job_id, file_id):
             str(output_path)
         ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
+    def reencode_for_concat(input_path, output_path, width, height, fps):
+        vf_filter = (
+            f"scale='if(gt(a,{width}/{height}),{width},-1)':'if(gt(a,{width}/{height}),-1,{height})',"
+            f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2,setsar=1:1,format=yuv420p"
+        )
+        subprocess.run([
+            'ffmpeg', '-y', '-i', str(input_path),
+            '-vf', vf_filter,
+            '-r', str(fps),
+            '-c:v', 'libx264', '-preset', 'fast',
+            '-c:a', 'aac', '-ar', '48000', '-ac', '2', '-b:a', '192k',
+            str(output_path)
+        ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
  
     #image_files = {img.stem: img for img in image_dir.glob("*") if img.suffix.lower() in [".png", ".jpg", ".jpeg"]}
     slide_files = [f for f in image_dir.iterdir() if f.suffix.lower() in [".png", ".mp4"]]
     slide_files_sorted = sorted(slide_files, key=lambda f: get_slide_number(f.name))
 
     audio_files = {aud.stem: aud for aud in audio_dir.glob("*") if aud.suffix.lower() in [".mp3", ".mp4", ".wav"]}
-    #common_keys = sorted(set(slide_files.keys()) & set(audio_files.keys()))
-
-    #if not common_keys:
-    #    raise RuntimeError("❌ No matching images or audios found")
-
-    #for idx, key in enumerate(common_keys, 1):
-    #    image = image_files[key]
-    #    audio = audio_files[key]
-    #    print(f"Processing image file: {image}")
-    #    print(f"Processing audio file: {audio}")
-
-    #    #Output file paths
-    #    cbr_audio = output_dir / f"audio_cbr_{idx:03d}.mp3"
-    #    video_path = temp_dir / f"output_{idx:03d}.mp4"
-
-    #    #Convert to CBR
-    #    convert_to_cbr(audio, cbr_audio)
-
-    #    print(f"Getting audio duration...")
-    #    duration = get_audio_duration(cbr_audio)
-    #    
-    #    trimmed_audio = output_dir / f"audio_trimmed_{idx:03d}.mp3"
-    #    trim_audio(cbr_audio, trimmed_audio, duration)
-
-    #    print(f"Running subprocess...")
-    #    print(f"Scale width: {RES_WIDTH}, Scale height: {RES_HEIGHT}")
-    #    vf_filter = (
-    #        f"scale='if(gt(a,{RES_WIDTH}/{RES_HEIGHT}),{RES_WIDTH},-1)':'if(gt(a,{RES_WIDTH}/{RES_HEIGHT}),-1,{RES_HEIGHT})',"
-    #        f"pad={RES_WIDTH}:{RES_HEIGHT}:(ow-iw)/2:(oh-ih)/2,setsar=1:1,format=yuv420p"
-    #    )
-    #    subprocess.run([
-    #        'ffmpeg', '-y', '-loop', '1', '-i', str(image),
-    #        '-i', str(trimmed_audio),
-    #        '-vf', vf_filter,
-    #        '-r', str(FPS),
-    #        '-c:v', 'libx264', '-preset', 'fast', '-tune', 'stillimage', '-shortest',
-    #        '-c:a', 'aac', '-b:a', '192k', '-ar', '48000', '-ac', '2',
-    #        '-t', f"{duration:.3f}", str(video_path)
-    #    ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-
-    #    # Re-encode
-    #    print(f"Re-encoding...")
-    #    reencode_clip(video_path, temp_adj_dir / video_path.name)
-
 
     segments = []
     for idx, slide_file in enumerate(slide_files_sorted, 1):
@@ -317,24 +288,16 @@ def produce_video(job_id, file_id):
         else:
             print(f"Unknown file type: {slide_file.name}")
             continue
-    
+        
+        # If audio is missing, add it
+        audio_safe_path = temp_adj_dir / video_segment_path.name
+        ensure_audio(video_segment_path, audio_safe_path)
+ 
         # Always re-encode for concat compatibility
-        reencode_clip(video_segment_path, temp_adj_dir / video_segment_path.name)
-        segments.append(temp_adj_dir / video_segment_path.name)
+        final_segment_path = temp_adj_dir / f"{video_segment_path.stem}_final.mp4"
+        reencode_clip(audio_safe_path, final_segment_path)
+        segments.append(final_segment_path)
     
-    # File list for ffmpeg concat
-    #print(f"Writing filelist.txt...")
-    #filelist_path = temp_adj_dir / 'filelist.txt'
-    #with filelist_path.open('w') as f:
-    #    if bumper_path_in.exists():
-    #        f.write(f"file '{bumper_path_in}'\n")
-    #    for idx in range(1, len(image_files) + 1):
-    #        adj_path = temp_adj_dir / f"output_{idx:03d}.mp4"
-    #        if adj_path.exists():
-    #            f.write(f"file '{adj_path}'\n")
-    #    if bumper_path_out.exists():
-    #        f.write(f"file '{bumper_path_out}'\n")
-
     print(f"Starting concatenation...")
 
     # First reencode bumpers
@@ -346,20 +309,16 @@ def produce_video(job_id, file_id):
     if bumper_path_in.exists():
         segments_final.append(str(bumper_path_in_processed))
     segments_final.extend([str(seg) for seg in segments])
-    #for idx in range(1, len(common_keys) + 1):
-    #    seg_path = temp_adj_dir / f"output_{idx:03d}.mp4"
-    #    if seg_path.exists():
-    #        segments.append(str(seg_path))
     if bumper_path_out.exists():
         segments_final.append(str(bumper_path_out_processed))
 
-    segments_with_audio = []
-    for seg in segments_final:
-        seg_with_audio = temp_adj_dir / (Path(seg).stem + "_wa.mp4")
-        ensure_audio(seg, seg_with_audio)
-        segments_with_audio.append(seg_with_audio)
-    
-    concat_with_filter_complex(segments_with_audio, final_output)
+    concat_seg = []
+    for seg in segments:
+        final_seg_path = temp_adj_final_dir / f"{seg.stem}_postproc.mp4"
+        reencode_for_concat(seg, final_seg_path, RES_WIDTH, RES_HEIGHT, FPS)
+        concat_seg.append(final_seg_path)
+
+    concat_with_filter_complex(concat_seg, final_output)
 
     async def send_download_ready_message(file_path, job_id, file_id):
         try:

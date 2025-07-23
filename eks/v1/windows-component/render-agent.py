@@ -8,9 +8,9 @@ import pika
 from pptx import Presentation
 
 # --- RabbitMQ Config from Environment ---
-RABBITMQ_HOST = os.getenv("RABBITMQ_HOST", "")
-RABBITMQ_USER = os.getenv("RABBITMQ_USER", "")
-RABBITMQ_PASS = os.getenv("RABBITMQ_PASS", "")
+RABBITMQ_HOST = os.getenv("RABBITMQ_HOST", "a1aa033d6ebf746c69dcec222772a47e-1819495256.us-east-1.elb.amazonaws.com")
+RABBITMQ_USER = os.getenv("RABBITMQ_USER", "default_user_4QGwTp4o-uNzyq6G0ki")
+RABBITMQ_PASS = os.getenv("RABBITMQ_PASS", "jkyzYCrd--jlZKXWhbn__Rk9aELWpShr")
 RABBITMQ_PORT = int(os.getenv("RABBITMQ_PORT", "5672"))
 QUEUE_NAME = os.getenv("RABBITMQ_QUEUE", "ppt_tasks")
 RESPONSE_QUEUE = os.getenv("RABBITMQ_RESPONSE_QUEUE", "windows_response")
@@ -245,6 +245,25 @@ def test_main():
     print(f"\n[INFO] Job complete. Manifest written to {manifest_path}")
     print(json.dumps(result, indent=2))
 
+def publish_response(message):
+    credentials = pika.PlainCredentials(RABBITMQ_USER, RABBITMQ_PASS)
+    params = pika.ConnectionParameters(
+        host=RABBITMQ_HOST,
+        port=RABBITMQ_PORT,
+        credentials=credentials
+    )
+    with pika.BlockingConnection(params) as connection:
+        channel = connection.channel()
+        channel.queue_declare(queue=RESPONSE_QUEUE, durable=True)
+        channel.basic_publish(
+            exchange='',
+            routing_key=RESPONSE_QUEUE,
+            body=message,
+            properties=pika.BasicProperties(delivery_mode=2)
+        )
+        print(f"[INFO] Published message to {RESPONSE_QUEUE}")
+
+
 # === RabbitMQ Functions
 def rabbitmq_callback(ch, method, properties, body):
     try:
@@ -254,11 +273,12 @@ def rabbitmq_callback(ch, method, properties, body):
         print("TYPE BEFORE JSON:", type(result))
         print("RESULT CONTENTS:", result)
         # Publish result as a JSON string to the response queue
-        ch.basic_publish(
-            exchange='',
-            routing_key=RESPONSE_QUEUE,
-            body=json.dumps(result)
-        )
+        #ch.basic_publish(
+        #    exchange='',
+        #    routing_key=RESPONSE_QUEUE,
+        #    body=json.dumps(result)
+        #)
+        publish_response(json.dumps(result))
         print(f"[INFO] Sent result for job {job['job_id']} to {RESPONSE_QUEUE}")
     except Exception as e:
         print(f"[ERROR] {e}")
