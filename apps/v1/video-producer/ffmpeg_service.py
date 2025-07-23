@@ -1,4 +1,4 @@
-import os
+import os, re
 import subprocess
 import shutil
 from celery import Celery
@@ -41,6 +41,11 @@ def produce_video(job_id, file_id):
     bumper_path_in_processed = Path(f"/artifacts/bumpers/{job_id}-bumper1-proc.mp4").resolve()
     bumper_path_out_processed = Path(f"/artifacts/bumpers/{job_id}-bumper2-proc.mp4").resolve()
     final_output = final_output_dir / f"{job_id}.mp4"
+
+    def get_slide_number(filename):
+        """Extracts slide number from filename, e.g. slide_01, slide_02_animation"""
+        m = re.search(r"slide_(\d+)", filename)
+        return int(m.group(1)) if m else 9999  # fallback at end
 
     def get_audio_duration(audio_path):
         result = subprocess.run(
@@ -176,65 +181,159 @@ def produce_video(job_id, file_id):
         proc.wait()
         if proc.returncode != 0:
             print(f"ffmpeg exited with code {proc.returncode}")
- 
-    image_files = {img.stem: img for img in image_dir.glob("*") if img.suffix.lower() in [".png", ".jpg", ".jpeg"]}
-    audio_files = {aud.stem: aud for aud in audio_dir.glob("*") if aud.suffix.lower() in [".mp3", ".mp4", ".wav"]}
-    common_keys = sorted(set(image_files.keys()) & set(audio_files.keys()))
 
-    if not common_keys:
-        raise RuntimeError("❌ No matching images or audios found")
-
-    for idx, key in enumerate(common_keys, 1):
-        image = image_files[key]
-        audio = audio_files[key]
-        print(f"Processing image file: {image}")
-        print(f"Processing audio file: {audio}")
-
-        #Output file paths
-        cbr_audio = output_dir / f"audio_cbr_{idx:03d}.mp3"
-        video_path = temp_dir / f"output_{idx:03d}.mp4"
-
-        #Convert to CBR
-        convert_to_cbr(audio, cbr_audio)
-
-        print(f"Getting audio duration...")
-        duration = get_audio_duration(cbr_audio)
-        
-        trimmed_audio = output_dir / f"audio_trimmed_{idx:03d}.mp3"
-        trim_audio(cbr_audio, trimmed_audio, duration)
-
-        print(f"Running subprocess...")
-        print(f"Scale width: {RES_WIDTH}, Scale height: {RES_HEIGHT}")
-        vf_filter = (
-            f"scale='if(gt(a,{RES_WIDTH}/{RES_HEIGHT}),{RES_WIDTH},-1)':'if(gt(a,{RES_WIDTH}/{RES_HEIGHT}),-1,{RES_HEIGHT})',"
-            f"pad={RES_WIDTH}:{RES_HEIGHT}:(ow-iw)/2:(oh-ih)/2,setsar=1:1,format=yuv420p"
-        )
+    def ensure_audio(segment_path, output_path):
+        # Check if audio stream exists
+        info = subprocess.check_output([
+            'ffprobe', '-v', 'error', '-select_streams', 'a:0',
+            '-show_entries', 'stream=codec_type', '-of', 'csv=p=0', str(segment_path)
+        ]).decode().strip()
+        if info:
+            # Has audio
+            shutil.copy(segment_path, output_path)
+            return
+        # No audio: add silent audio track of same duration
+        duration = float(subprocess.check_output([
+            'ffprobe', '-v', 'error', '-show_entries', 'format=duration',
+            '-of', 'default=noprint_wrappers=1:nokey=1', str(segment_path)
+        ]).decode().strip())
         subprocess.run([
-            'ffmpeg', '-y', '-loop', '1', '-i', str(image),
-            '-i', str(trimmed_audio),
-            '-vf', vf_filter,
-            '-r', str(FPS),
-            '-c:v', 'libx264', '-preset', 'fast', '-tune', 'stillimage', '-shortest',
-            '-c:a', 'aac', '-b:a', '192k', '-ar', '48000', '-ac', '2',
-            '-t', f"{duration:.3f}", str(video_path)
+            'ffmpeg', '-y', '-i', str(segment_path),
+            '-f', 'lavfi', '-t', f"{duration}", '-i', 'anullsrc=channel_layout=stereo:sample_rate=48000',
+            '-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k', '-shortest',
+            str(output_path)
         ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
-        # Re-encode
-        print(f"Re-encoding...")
-        reencode_clip(video_path, temp_adj_dir / video_path.name)
+ 
+    #image_files = {img.stem: img for img in image_dir.glob("*") if img.suffix.lower() in [".png", ".jpg", ".jpeg"]}
+    slide_files = [f for f in image_dir.iterdir() if f.suffix.lower() in [".png", ".mp4"]]
+    slide_files_sorted = sorted(slide_files, key=lambda f: get_slide_number(f.name))
 
+    audio_files = {aud.stem: aud for aud in audio_dir.glob("*") if aud.suffix.lower() in [".mp3", ".mp4", ".wav"]}
+    #common_keys = sorted(set(slide_files.keys()) & set(audio_files.keys()))
+
+    #if not common_keys:
+    #    raise RuntimeError("❌ No matching images or audios found")
+
+    #for idx, key in enumerate(common_keys, 1):
+    #    image = image_files[key]
+    #    audio = audio_files[key]
+    #    print(f"Processing image file: {image}")
+    #    print(f"Processing audio file: {audio}")
+
+    #    #Output file paths
+    #    cbr_audio = output_dir / f"audio_cbr_{idx:03d}.mp3"
+    #    video_path = temp_dir / f"output_{idx:03d}.mp4"
+
+    #    #Convert to CBR
+    #    convert_to_cbr(audio, cbr_audio)
+
+    #    print(f"Getting audio duration...")
+    #    duration = get_audio_duration(cbr_audio)
+    #    
+    #    trimmed_audio = output_dir / f"audio_trimmed_{idx:03d}.mp3"
+    #    trim_audio(cbr_audio, trimmed_audio, duration)
+
+    #    print(f"Running subprocess...")
+    #    print(f"Scale width: {RES_WIDTH}, Scale height: {RES_HEIGHT}")
+    #    vf_filter = (
+    #        f"scale='if(gt(a,{RES_WIDTH}/{RES_HEIGHT}),{RES_WIDTH},-1)':'if(gt(a,{RES_WIDTH}/{RES_HEIGHT}),-1,{RES_HEIGHT})',"
+    #        f"pad={RES_WIDTH}:{RES_HEIGHT}:(ow-iw)/2:(oh-ih)/2,setsar=1:1,format=yuv420p"
+    #    )
+    #    subprocess.run([
+    #        'ffmpeg', '-y', '-loop', '1', '-i', str(image),
+    #        '-i', str(trimmed_audio),
+    #        '-vf', vf_filter,
+    #        '-r', str(FPS),
+    #        '-c:v', 'libx264', '-preset', 'fast', '-tune', 'stillimage', '-shortest',
+    #        '-c:a', 'aac', '-b:a', '192k', '-ar', '48000', '-ac', '2',
+    #        '-t', f"{duration:.3f}", str(video_path)
+    #    ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+    #    # Re-encode
+    #    print(f"Re-encoding...")
+    #    reencode_clip(video_path, temp_adj_dir / video_path.name)
+
+
+    segments = []
+    for idx, slide_file in enumerate(slide_files_sorted, 1):
+        basename = slide_file.stem
+        # Try to find a matching audio file (by slide number)
+        matching_audio = None
+        for key in audio_files:
+            if get_slide_number(key) == get_slide_number(basename):
+                matching_audio = audio_files[key]
+                break
+    
+        video_segment_path = temp_dir / f"output_{idx:03d}.mp4"
+    
+        if slide_file.suffix.lower() == ".png":
+            # --- Process static image as before ---
+            if not matching_audio:
+                print(f"⚠️ No audio found for {slide_file.name}, skipping.")
+                continue
+            print(f"Combining image: {slide_file.name} with audio: {matching_audio.name}")
+            cbr_audio = output_dir / f"audio_cbr_{idx:03d}.mp3"
+            convert_to_cbr(matching_audio, cbr_audio)
+            duration = get_audio_duration(cbr_audio)
+            trimmed_audio = output_dir / f"audio_trimmed_{idx:03d}.mp3"
+            trim_audio(cbr_audio, trimmed_audio, duration)
+    
+            vf_filter = (
+                f"scale='if(gt(a,{RES_WIDTH}/{RES_HEIGHT}),{RES_WIDTH},-1)':'if(gt(a,{RES_WIDTH}/{RES_HEIGHT}),-1,{RES_HEIGHT})',"
+                f"pad={RES_WIDTH}:{RES_HEIGHT}:(ow-iw)/2:(oh-ih)/2,setsar=1:1,format=yuv420p"
+            )
+            subprocess.run([
+                'ffmpeg', '-y', '-loop', '1', '-i', str(slide_file),
+                '-i', str(trimmed_audio),
+                '-vf', vf_filter,
+                '-r', str(FPS),
+                '-c:v', 'libx264', '-preset', 'fast', '-tune', 'stillimage', '-shortest',
+                '-c:a', 'aac', '-b:a', '192k', '-ar', '48000', '-ac', '2',
+                '-t', f"{duration:.3f}", str(video_segment_path)
+            ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        elif slide_file.suffix.lower() == ".mp4":
+            # --- Process animation segment ---
+            print(f"Handling animation video: {slide_file.name}")
+            # If you want to use the TTS audio instead of animation audio:
+            if matching_audio:
+                cbr_audio = output_dir / f"audio_cbr_{idx:03d}.mp3"
+                convert_to_cbr(matching_audio, cbr_audio)
+                duration = get_audio_duration(cbr_audio)
+                trimmed_audio = output_dir / f"audio_trimmed_{idx:03d}.mp3"
+                trim_audio(cbr_audio, trimmed_audio, duration)
+                # Replace original audio with TTS
+                subprocess.run([
+                    'ffmpeg', '-y', '-i', str(slide_file),
+                    '-i', str(trimmed_audio),
+                    '-map', '0:v:0', '-map', '1:a:0',
+                    '-c:v', 'libx264', '-preset', 'fast',
+                    '-c:a', 'aac', '-b:a', '192k', '-ar', '48000', '-ac', '2',
+                    '-shortest', str(video_segment_path)
+                ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            else:
+                print(f"No matching TTS audio found for {slide_file.name}, using original audio.")
+                reencode_clip(slide_file, video_segment_path)
+        else:
+            print(f"Unknown file type: {slide_file.name}")
+            continue
+    
+        # Always re-encode for concat compatibility
+        reencode_clip(video_segment_path, temp_adj_dir / video_segment_path.name)
+        segments.append(temp_adj_dir / video_segment_path.name)
+    
     # File list for ffmpeg concat
-    print(f"Writing filelist.txt...")
-    filelist_path = temp_adj_dir / 'filelist.txt'
-    with filelist_path.open('w') as f:
-        if bumper_path_in.exists():
-            f.write(f"file '{bumper_path_in}'\n")
-        for idx in range(1, len(image_files) + 1):
-            adj_path = temp_adj_dir / f"output_{idx:03d}.mp4"
-            if adj_path.exists():
-                f.write(f"file '{adj_path}'\n")
-        if bumper_path_out.exists():
-            f.write(f"file '{bumper_path_out}'\n")
+    #print(f"Writing filelist.txt...")
+    #filelist_path = temp_adj_dir / 'filelist.txt'
+    #with filelist_path.open('w') as f:
+    #    if bumper_path_in.exists():
+    #        f.write(f"file '{bumper_path_in}'\n")
+    #    for idx in range(1, len(image_files) + 1):
+    #        adj_path = temp_adj_dir / f"output_{idx:03d}.mp4"
+    #        if adj_path.exists():
+    #            f.write(f"file '{adj_path}'\n")
+    #    if bumper_path_out.exists():
+    #        f.write(f"file '{bumper_path_out}'\n")
 
     print(f"Starting concatenation...")
 
@@ -243,17 +342,24 @@ def produce_video(job_id, file_id):
     reencode_bumper(bumper_path_out, bumper_path_out_processed, RES_WIDTH, RES_HEIGHT, FPS)
 
     # Gather list of segments to concatenate, in the right order
-    segments = []
+    segments_final = []
     if bumper_path_in.exists():
-        segments.append(str(bumper_path_in_processed))
-    for idx in range(1, len(common_keys) + 1):
-        seg_path = temp_adj_dir / f"output_{idx:03d}.mp4"
-        if seg_path.exists():
-            segments.append(str(seg_path))
+        segments_final.append(str(bumper_path_in_processed))
+    segments_final.extend([str(seg) for seg in segments])
+    #for idx in range(1, len(common_keys) + 1):
+    #    seg_path = temp_adj_dir / f"output_{idx:03d}.mp4"
+    #    if seg_path.exists():
+    #        segments.append(str(seg_path))
     if bumper_path_out.exists():
-        segments.append(str(bumper_path_out_processed))
+        segments_final.append(str(bumper_path_out_processed))
+
+    segments_with_audio = []
+    for seg in segments_final:
+        seg_with_audio = temp_adj_dir / (Path(seg).stem + "_wa.mp4")
+        ensure_audio(seg, seg_with_audio)
+        segments_with_audio.append(seg_with_audio)
     
-    concat_with_filter_complex(segments, final_output)
+    concat_with_filter_complex(segments_with_audio, final_output)
 
     async def send_download_ready_message(file_path, job_id, file_id):
         try:
