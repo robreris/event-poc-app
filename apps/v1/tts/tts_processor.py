@@ -1,4 +1,4 @@
-import os
+import os, re
 from pathlib import Path
 from celery import Celery
 
@@ -55,6 +55,14 @@ def synthesize(input_dir: str, job_id: str, voice: str, tts_engine: str, piper_a
     OUTPUT_JOB_DIR = OUTPUT_DIR / job_id
     OUTPUT_JOB_DIR.mkdir(parents=True, exist_ok=True)
 
+    def insert_pauses_after_period(text, pause_ms=250):
+        # Adds [pause=250] after every period (optionally, only at sentence ends)
+        pause_token = f"[pause={pause_ms}]"
+        # This regex adds a pause after any period (.), question mark (?), or exclamation (!)
+        # followed by space/newline and a capital letter or end of string.
+        return re.sub(r'([.?!])(\s+)', r'\1' + pause_token + r'\2', text)
+
+
     for text_file in sorted(input_path.glob("*.txt")):
         filename = text_file.stem
         with open(text_file, "r", encoding="utf-8") as f:
@@ -88,34 +96,73 @@ def synthesize(input_dir: str, job_id: str, voice: str, tts_engine: str, piper_a
                     print(f"[ERROR] Cancelled: {cancellation.reason} - {cancellation.error_details}")
                     raise RuntimeError(f"TTS failed for {filename}")
             elif tts_engine == "piper":
-                # --- Piper TTS via subprocess ---
-                # Piper needs WAV output by default, so we'll generate a WAV and convert to MP3 if needed
-                output_wav = OUTPUT_JOB_DIR / f"{filename}.wav"
-                print(f"Running Piper with length scale {piper_args[0]}, noise scale {piper_args[1]}, and phoneme variability parameter {piper_args[2]}") 
-                piper_cmd = [
-                    PIPER_BINARY,
-                    "--model", "/models/"+voice+".onnx",
-                    "--output_file", str(output_wav),
-                    "--length_scale", str(piper_args[0]),        # speed of speech; higher=slower
-                    "--noise_scale", str(piper_args[1]),       # speech pattern variation; lower=flatter
-                    "--noise_w", str(piper_args[2])            # duration/affects timing and rhythm
-                ]
-                print(f"[DEBUG] Running Piper: {' '.join(piper_cmd)}")
+                # treat each period as a pause
+                text = insert_pauses_after_period(text, pause_ms=250)
 
-                proc = subprocess.run(
-                    piper_cmd,
-                    input=text.encode("utf-8"),
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE
-                )
-                if proc.returncode != 0:
-                    print(proc.stderr.decode())
-                    raise RuntimeError(f"Piper TTS failed for {filename}")
-                # Convert WAV to MP3
+                # Split text on [pause=NNN] tokens
+                parts = re.split(r'(\[pause=\d+\])', text)
+                part_files = []
+
+                for i, part in enumerate(parts):
+                    match = re.match(r'\[pause=(\d+)\]', part)
+                    if match:
+                        # Generate silence for the pause
+                        ms = int(match.group(1)) / 1000.0  # Convert ms to seconds
+                        pause_wav = OUTPUT_JOB_DIR / f"{filename}_pause_{i}.wav"
+                        subprocess.run([
+                            "ffmpeg", "-y", "-f", "lavfi", "-i", "anullsrc=r=22050:cl=mono",
+                            "-t", str(ms), str(pause_wav)
+                        ], check=True)
+                        part_files.append(str(pause_wav))
+                    elif part.strip():
+                        # Generate TTS for this chunk
+                        part_wav = OUTPUT_JOB_DIR / f"{filename}_part_{i}.wav"
+                        piper_cmd = [
+                            PIPER_BINARY,
+                            "--model", f"/models/{voice}.onnx",
+                            "--output_file", str(part_wav),
+                            "--length_scale", str(piper_args[0]),
+                            "--noise_scale", str(piper_args[1]),
+                            "--noise_w", str(piper_args[2])
+                        ]
+                        print(f"[DEBUG] Running Piper for chunk {i}: {' '.join(piper_cmd)}")
+                        proc = subprocess.run(
+                            piper_cmd,
+                            input=part.encode("utf-8"),
+                            stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE
+                        )
+                        if proc.returncode != 0:
+                            print(proc.stderr.decode())
+                            raise RuntimeError(f"Piper TTS failed for {filename}, chunk {i}")
+                        part_files.append(str(part_wav))
+
+                # Write concat list file
+                concat_file = OUTPUT_JOB_DIR / f"{filename}_concat.txt"
+                with open(concat_file, "w") as f:
+                    for wav in part_files:
+                        f.write(f"file '{wav}'\n")
+
+                # Concatenate all .wav parts
+                final_wav = OUTPUT_JOB_DIR / f"{filename}_final.wav"
                 subprocess.run([
-                    "ffmpeg", "-y", "-i", str(output_wav), str(output_file)
+                    "ffmpeg", "-y", "-f", "concat", "-safe", "0",
+                    "-i", str(concat_file),
+                    "-c", "copy", str(final_wav)
                 ], check=True)
-                os.remove(output_wav)
+
+                # Convert final wav to mp3
+                subprocess.run([
+                    "ffmpeg", "-y", "-i", str(final_wav), str(output_file)
+                ], check=True)
+
+                # Optionally, cleanup temp files
+                for f in part_files + [str(final_wav), str(concat_file)]:
+                    try:
+                        os.remove(f)
+                    except Exception:
+                        pass
+
                 audio_files.append(str(output_file))
             else:
                 raise ValueError(f"Unknown TTS_ENGINE: {TTS_ENGINE}")

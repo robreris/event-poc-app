@@ -21,18 +21,21 @@ ENV PATH /root/.local/share/piper:$PATH
 # Download Piper models
 RUN mkdir -p /models
 
-## Ryan
-RUN wget -O /models/en_US-ryan-high.onnx https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_US/ryan/high/en_US-ryan-high.onnx && \
-    wget -O /models/en_US-ryan-high.onnx.json https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_US/ryan/high/en_US-ryan-high.onnx.json
-## Joe
-RUN wget -O /models/en_US-joe-medium.onnx  https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_US/joe/medium/en_US-joe-medium.onnx && \
-    wget -O /models/en_US-joe-medium.onnx.json https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_US/joe/medium/en_US-joe-medium.onnx.json
-## Kathleen 
-RUN wget -O /models/en_US-kathleen-low.onnx  https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_US/kathleen/low/en_US-kathleen-low.onnx && \
-    wget -O /models/en_US-kathleen-low.onnx.json https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_US/kathleen/low/en_US-kathleen-low.onnx.json
-## Amy 
-RUN wget -O /models/en_US-amy-medium.onnx  https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_US/amy/medium/en_US-amy-medium.onnx && \
-    wget -O /models/en_US-amy-medium.onnx.json https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_US/amy/medium/en_US-amy-medium.onnx.json
+## Sam 
+RUN wget -O /models/en_US-sam-medium.onnx https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/sam/medium/en_US-sam-medium.onnx && \
+    wget -O /models/en_US-sam-medium.onnx.json https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/sam/medium/en_US-sam-medium.onnx.json
+## hfc_male
+RUN wget -O /models/en_US-hfc_male-medium.onnx https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/hfc_male/medium/en_US-hfc_male-medium.onnx && \
+    wget -O /models/en_US-hfc_male-medium.onnx.json https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/hfc_male/medium/en_US-hfc_male-medium.onnx.json
+## hfc_female
+RUN wget -O /models/en_US-hfc_female-medium.onnx https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/hfc_female/medium/en_US-hfc_female-medium.onnx && \
+    wget -O /models/en_US-hfc_female-medium.onnx.json https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/hfc_female/medium/en_US-hfc_female-medium.onnx.json
+# John 
+RUN wget -O /models/en_US-john-medium.onnx https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/john/medium/en_US-john-medium.onnx && \
+    wget -O /models/en_US-john-medium.onnx.json https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/john/medium/en_US-john-medium.onnx.json
+# Norman 
+RUN wget -O /models/en_US-norman-medium.onnx https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/norman/medium/en_US-norman-medium.onnx && \
+    wget -O /models/en_US-norman-medium.onnx.json https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/norman/medium/en_US-norman-medium.onnx.json
 
 # Activate environment
 ENV PATH /opt/conda/envs/tts_processor_env/bin:$PATH
