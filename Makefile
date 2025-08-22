@@ -17,8 +17,13 @@ APP_NS ?= event-poc
 ELB_NS ?= aws-elb-controller-namespace
 
 WINDOWS_AMI ?= ami-02b60b5095d1e5227
+WINDOWS_EC2_ID ?= i-0a4e3015e160c493c
 WINDOWS_SCRIPT_URL ?= https://raw.githubusercontent.com/robreris/event-poc-app/refs/heads/main/eks/v2/windows-ppt/windows-userdata.ps1
 KEY_NAME ?= fgt-kp
+SCRIPT_DIR ?= C:\\render-agent\\
+SCRIPT_EXE ?= agent-script.py
+PARAM_PREFIX ?= /event-driven-poc
+PYTHON_ON_WINDOWS ?= C:\Users\Administrator\AppData\Local\Programs\Python\Python313\python.exe
 
 # Versioned folder: v1 or v2 (etc.)
 VERS ?= v1
@@ -87,13 +92,17 @@ help:
 	@echo ""
 
 .PHONY: up
-up: check cluster roles extract-roles sa efs efs-id eso rabbit rabbit-info
+up: check cluster roles extract-roles sa efs efs-id eso rabbit rabbit-info start-app start-windows
 	@echo "✅ All done."
 
 .PHONY: check
 check:
 	@$(require_vers)
 	@echo "Launching $(VERS) setup…"
+
+.PHONY: start-windows
+start-windows: agent-start render-agent-run
+	@echo "Launching windows instance and script..."
 
 #===================#
 # Cluster           #
@@ -279,11 +288,12 @@ rabbit:
 	rabbitusername=$$(kubectl get secret my-rabbit-default-user -o jsonpath="{.data.username}" | base64 --decode)
 	rabbitpassword=$$(kubectl get secret my-rabbit-default-user -o jsonpath="{.data.password}" | base64 --decode)
 
-	if [ "$(VERS)" = "v2" ]; then
-	  aws ssm put-parameter --name "/$(CLUSTER_NAME)/rabbithost"     --value "/$$rabbitmqmsgdns" --type "SecureString" --overwrite
-	  aws ssm put-parameter --name "/$(CLUSTER_NAME)/rabbitusername" --value "/$$rabbitusername" --type "SecureString" --overwrite
-	  aws ssm put-parameter --name "/$(CLUSTER_NAME)/rabbitpassword" --value "/$$rabbitpassword" --type "SecureString" --overwrite
-	fi
+	echo "Copying RabbitMQ info to parameter store..."
+	#if [ "$(VERS)" = "v2" ]; then
+	aws ssm put-parameter --name "/$(CLUSTER_NAME)/rabbithost"     --value "$$rabbitmqmsgdns" --type "SecureString" --overwrite
+	aws ssm put-parameter --name "/$(CLUSTER_NAME)/rabbitusername" --value "$$rabbitusername" --type "SecureString" --overwrite
+	aws ssm put-parameter --name "/$(CLUSTER_NAME)/rabbitpassword" --value "$$rabbitpassword" --type "SecureString" --overwrite
+	#fi
 
 	echo "Copying rabbitmq secrets to app namespace $(APP_NS)…"
 	kubectl get secret my-rabbit-default-user -n $(APP_NS) &>/dev/null && \
@@ -317,56 +327,6 @@ rabbit-info:
 	echo "RabbitMQ Password: $$rabbitpassword"
 
 #===================#
-# Windows Component #
-#===================#
-.PHONY: windows
-windows:
-	set -euo pipefail
-	# Cluster info
-	CLUSTER_INFO=$$(eksctl get cluster --name "$(CLUSTER_NAME)" --region "$(AWS_DEFAULT_REGION)" -o json)
-	VPC_ID=$$(echo "$$CLUSTER_INFO" | jq -r '.[0].ResourcesVpcConfig.VpcId')
-	SUBNET_ID_1=$$(echo "$$CLUSTER_INFO" | jq -r '.[0].ResourcesVpcConfig.SubnetIds[]' | head -n 1)
-	SG_ID=$$(aws ec2 describe-instances --filters "Name=tag:eks:cluster-name,Values=$(CLUSTER_NAME)" --query 'Reservations[*].Instances[*].SecurityGroups[*].GroupId' --output text | uniq)
-
-	# Rabbit info
-	if [ "$(VERS)" = "v2" ]; then
-	  rabbitmqmsgdns=$$(kubectl get ingress/rabbitmq-msg-ingress -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
-	else
-	  rabbitmqmsgdns=$$(kubectl get svc my-rabbit -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || echo "")
-	fi
-	rabbitusername=$$(kubectl get secret my-rabbit-default-user -o jsonpath="{.data.username}" | base64 --decode)
-	rabbitpassword=$$(kubectl get secret my-rabbit-default-user -o jsonpath="{.data.password}" | base64 --decode)
-
-	aws ssm put-parameter --name "/$(CLUSTER_NAME)/rabbithost"     --value "$$rabbitmqmsgdns" --type "SecureString" --overwrite
-	aws ssm put-parameter --name "/$(CLUSTER_NAME)/rabbitusername" --value "$$rabbitusername"  --type "SecureString" --overwrite
-	aws ssm put-parameter --name "/$(CLUSTER_NAME)/rabbitpassword" --value "$$rabbitpassword"  --type "SecureString" --overwrite
-
-	aws cloudformation create-stack --stack-name $(APP_NS)-windows-ra-ec2 \
-	  --template-body file://./eks/$(VERS)/windows-ppt/windows-ppt-cft.yaml \
-	  --parameters \
-	    ParameterKey=AmiId,ParameterValue=$(WINDOWS_AMI) \
-	    ParameterKey=SecurityGroupId,ParameterValue=$$SG_ID \
-	    ParameterKey=SubnetId,ParameterValue=$$SUBNET_ID_1 \
-	    ParameterKey=KeyName,ParameterValue=$(KEY_NAME) \
-	    ParameterKey=ClusterName,ParameterValue=$(CLUSTER_NAME) \
-	    ParameterKey=VpcId,ParameterValue=$$VPC_ID \
-	    ParameterKey=ScriptURL,ParameterValue=$(WINDOWS_SCRIPT_URL) \
-	  --capabilities CAPABILITY_NAMED_IAM \
-	  --region $(AWS_DEFAULT_REGION)
-
-	instance_id=$$(aws ec2 describe-instances \
-	  --filters "Name=tag:aws:cloudformation:stack-name,Values=$(APP_NS)-windows-ra-ec2" \
-	  --query "Reservations[].Instances[].InstanceId" \
-	  --output text)
-
-	echo ""
-	echo "To run the SSM document and PowerShell script on the instance, run:"
-	echo 'aws ssm send-command --document-name "WindowsAgentSetupScript" \'
-	echo "  --targets \"Key=instanceIds,Values=$$instance_id\" \\"
-	echo "  --output text"
-	echo ""
-
-#===================#
 # Copy Rabbit Creds #
 #===================#
 # Implements new_rabbit_creds.sh logic
@@ -386,6 +346,40 @@ creds:
 	  -n $(APP_NS)
 
 #===================#
+# K8S App           #
+#===================#
+.PHONY: start-app
+start-app:
+	@kubectl create -f manifests/$(VERS)/
+
+.PHONY: stop-app
+stop-app:
+	@kubectl delete -f manifests/$(VERS)/
+
+#===================#
+# Windows Component #
+#===================#
+.PHONY: render-agent-run
+render-agent-run:
+	@python3 eks/$(VERS)/windows-component/run_render_agent.py \
+		--region $(AWS_DEFAULT_REGION) \
+		--instance-id $(WINDOWS_EC2_ID) \
+		--param-prefix $(PARAM_PREFIX) \
+		--python-win "$(PYTHON_ON_WINDOWS)" \
+		--script-directory "$(SCRIPT_DIR)" \
+		--script-exe "$(SCRIPT_EXE)"
+
+.PHONY: agent-start
+agent-start:
+	@aws ec2 start-instances --region $(AWS_DEFAULT_REGION) --instance-ids $(WINDOWS_EC2_ID)
+	@aws ec2 wait instance-status-ok --region $(AWS_DEFAULT_REGION) --instance-ids $(WINDOWS_EC2_ID)
+	@echo "Instance is up."
+
+.PHONY: agent-stop
+agent-stop:
+	@aws ec2 stop-instances --region $(AWS_DEFAULT_REGION) --instance-ids $(WINDOWS_EC2_ID)
+
+#===================#
 # Teardown          #
 #===================#
 .PHONY: down
@@ -393,6 +387,8 @@ down:
 	@$(require_vers)
 	set -euo pipefail
 	export AWS_DEFAULT_REGION=$(AWS_DEFAULT_REGION)
+	@$(stop-app) 
+	@$(agent-stop)
 	# App manifests
 	kubectl delete -f manifests/$(VERS) || true
 	# Rabbit cluster
